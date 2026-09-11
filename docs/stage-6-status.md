@@ -106,6 +106,19 @@ optimization baseline. They demonstrate correct concurrent verification, but
 do not satisfy the 100 sustained private-TPS target. A post-cache run on the
 same machine is required for an apples-to-apples comparison.
 
+The same WSL machine was then retested at commit `18953ba` after enabling the
+process-lifetime verifying-key cache:
+
+- one worker, 100 verifications: 89.647 aggregate TPS in 1.11548 seconds;
+- four workers, 400 verifications: 150.542 aggregate TPS in 2.65706 seconds.
+
+Every proof verified successfully. The four-worker result exceeds the initial
+100 sustained private-verification TPS target by 50.5% and improves the
+pre-cache four-worker baseline by about 70.4 times. CPU model, logical-core
+count and available RAM still need to be captured alongside this result before
+the hardware evidence is considered fully published. End-to-end node TPS is a
+separate measurement and is not claimed by this verifier benchmark.
+
 ## Validation still required before the Stage 6 completion claim
 
 1. Green pinned-Orchard workflow, including the Rust proof/signature test and a
