@@ -1,4 +1,4 @@
-use incrementalmerkletree::{frontier::Frontier, Hashable};
+use incrementalmerkletree::frontier::Frontier;
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorized, BundleVersion, Flags},
@@ -263,7 +263,8 @@ mod tests {
     fn verifies_real_orchard_proof_and_signatures() {
         let mut rng = OsRng;
         let version = BundleVersion::orchard_v2();
-        let sk = SpendingKey::random(&mut rng);
+        let sk = Option::<SpendingKey>::from(SpendingKey::from_bytes([0; 32]))
+            .expect("canonical test spending key");
         let recipient = FullViewingKey::from(&sk)
             .address_at(0u32, Scope::External);
         let mut builder = Builder::new(
