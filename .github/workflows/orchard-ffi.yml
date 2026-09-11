@@ -11,6 +11,7 @@ on:
       - "core/include/onuros/private_block.hpp"
       - "tests/orchard_ffi_backend_test.cpp"
       - "tests/private_block_test.cpp"
+      - "scripts/run-private-tps.sh"
       - ".github/workflows/orchard-ffi.yml"
   pull_request:
     paths:
@@ -21,6 +22,7 @@ on:
       - "core/include/onuros/private_block.hpp"
       - "tests/orchard_ffi_backend_test.cpp"
       - "tests/private_block_test.cpp"
+      - "scripts/run-private-tps.sh"
       - ".github/workflows/orchard-ffi.yml"
 
 permissions:
@@ -36,6 +38,8 @@ jobs:
         run: cargo test --locked --manifest-path crypto/orchard-ffi/Cargo.toml
       - name: Build release bridge
         run: cargo build --locked --manifest-path crypto/orchard-ffi/Cargo.toml --release
+      - name: Smoke test real private TPS harness
+        run: ./scripts/run-private-tps.sh 1 1
       - name: Link C++ consensus boundary to Orchard bridge
         run: |
           cmake -S . -B build-orchard \
