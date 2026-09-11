@@ -123,7 +123,10 @@ int run_pipeline(const std::filesystem::path& fixture) {
     OnurosRewardPolicy economics;
     const auto amounts = economics.allocate(1U, admission.prepared->fees(), 0);
     const auto reward = make_private_reward_transaction(
-        {amounts, miner, team, ecosystem});
+        {amounts,
+         amounts.miner == 0 ? Hash256{} : miner,
+         amounts.team == 0 ? Hash256{} : team,
+         amounts.ecosystem == 0 ? Hash256{} : ecosystem});
 
     Block block;
     block.header.version = 2U;
