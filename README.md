@@ -1,8 +1,8 @@
 # Onuros Local Blockchain Core
 
-This repository contains the C++17 implementation of the Onuros local blockchain core.
-
-Development branch: `local-blockchain`.
+This repository contains the C++17 implementation of the Onuros local blockchain
+core. `main` is the stable Stage 5 baseline, `local-blockchain` is its
+maintenance branch, and `private-transactions` contains active Stage 6 work.
 
 Confirmed economics:
 
@@ -14,7 +14,7 @@ Confirmed economics:
 - 60-block reward maturity
 - No premine
 
-Stage 5 prototype checkpoints are complete. The branch includes canonical block and
+Stage 5 prototype checkpoints are complete. The core includes canonical block and
 transaction encoding, bounded decoding, contextual validation, exact compact-target
 and chain-work arithmetic, 60-block difficulty adjustment, median-time rules, a
 checksummed append-only database with torn-write recovery, strongest-chain selection,
@@ -25,7 +25,10 @@ then follow [the WSL local-node guide](docs/local-node-run.md). Linux, Windows a
 sanitizer builds run in GitHub Actions.
 
 The local miner uses an injected proof-of-work hash so consensus behavior can be tested
-deterministically. Stage 4's KawPoW implementation still needs its final AMD hardware
-evidence and later testnet wiring. Stage 6 will define the mandatory private-transaction
-body and shielded state. The first performance goal remains 100 sustained private TPS
-across multiple nodes on published hardware; it is a target, not a current claim.
+deterministically. Stage 4's KawPoW implementation still needs final AMD hardware
+evidence and later testnet wiring. Stage 6 private-transaction work is in progress.
+The first performance goal remains 100 sustained private TPS across multiple nodes
+on published hardware; it is a target, not a current claim.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and report
+vulnerabilities according to [SECURITY.md](SECURITY.md).
