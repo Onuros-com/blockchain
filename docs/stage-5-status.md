@@ -1,6 +1,6 @@
 # Stage 5 local blockchain core
 
-Status: in progress.
+Status: implementation checkpoints complete; integration evidence recorded below.
 
 Stage 4 remains provisionally passed except for the required physical AMD/OpenCL
 execution evidence. That external hardware checkpoint is not waived and Stage 4
@@ -38,9 +38,40 @@ confirmed 60-second block interval, a four-times adjustment clamp, and median-ti
 calculation over the newest 11 ancestors. The retarget parameters remain explicit
 and invalid or non-canonical targets fail closed.
 
-1. Persistent block/index database with atomic restart recovery.
-2. Atomic undo/application of reorganization plans.
-3. Local mining/validation/restart integration and invalid-block test suite.
+## Checkpoint 5: durable append-only block database
+
+The local database uses versioned, checksummed append records. Each accepted block
+is flushed before in-memory state advances. Startup bounds the file before allocation,
+replays the block index, rejects checksum or chain-work corruption, and truncates only
+an incomplete final append. Block lookup is indexed rather than a linear chain scan.
+
+## Checkpoint 6: atomic active-chain reorganization
+
+Disconnect/connect plans execute against a candidate state. Ordered disconnects create
+explicit undo records; missing blocks, wrong order, wrong parent, or wrong height abort
+without changing the live active chain. Startup independently reconstructs active state
+from the strongest-work index.
+
+## Checkpoint 7: local node and mining integration
+
+The local node prepares block candidates, computes branch-specific median time and
+expected difficulty, validates every consensus field and injected proof-of-work hash,
+derives exact 256-bit block work, persists the block, and only then advances active
+state. Restart revalidates every stored block and proof of work. Tests cover mining,
+forks, stronger-chain reorganization, restart, torn writes, corruption, wrong roots,
+timestamps, targets, parents, and insufficient work.
+
+The injected CPU test hash demonstrates the complete pipeline deterministically. The
+Stage 4 KawPoW engine must be connected through the same proof-of-work interface before
+testnet; this checkpoint does not mislabel the test hash as production mining.
+
+## Stage 5 completion boundary
+
+The local blockchain-core implementation is complete at prototype scope. Stage 6 must
+replace opaque transaction bodies with the mandatory private-transaction rules and
+state commitments. Multi-process networking, production database tuning, KawPoW engine
+wiring, and the published 100-private-TPS benchmark remain later roadmap integration
+work rather than claims made by Stage 5.
 
 ## Throughput direction
 

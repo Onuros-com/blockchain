@@ -124,10 +124,32 @@ class ChainIndex {
     }
 
 public:
+    ChainIndexError check_genesis(Hash256 id, ChainWork work) const {
+        if (active_tip_) return ChainIndexError::genesis_already_exists;
+        if (entries_.find(id) != entries_.end()) return ChainIndexError::duplicate_block;
+        if (is_zero(work)) return ChainIndexError::zero_block_work;
+        return ChainIndexError::none;
+    }
+
+    ChainIndexError check_block(Hash256 id, Hash256 parent, Height height,
+                                ChainWork work) const {
+        if (!active_tip_) return ChainIndexError::missing_genesis;
+        if (entries_.find(id) != entries_.end()) return ChainIndexError::duplicate_block;
+        const auto parent_iterator = entries_.find(parent);
+        if (parent_iterator == entries_.end()) return ChainIndexError::unknown_parent;
+        if (parent_iterator->second.height == std::numeric_limits<Height>::max() ||
+            height != parent_iterator->second.height + 1U)
+            return ChainIndexError::invalid_height;
+        if (is_zero(work)) return ChainIndexError::zero_block_work;
+        if (!add_chain_work(parent_iterator->second.accumulated_work, work))
+            return ChainIndexError::accumulated_work_overflow;
+        return ChainIndexError::none;
+    }
+
     ChainIndexResult add_genesis(Hash256 id, ChainWork work,
                                  std::uint64_t timestamp) {
-        if (active_tip_) return {ChainIndexError::genesis_already_exists, std::nullopt};
-        if (is_zero(work)) return {ChainIndexError::zero_block_work, std::nullopt};
+        const auto error = check_genesis(id, work);
+        if (error != ChainIndexError::none) return {error, std::nullopt};
         entries_.emplace(id, ChainEntry{id, {}, 0U, work, work, timestamp});
         active_tip_ = id;
         return {};
@@ -135,18 +157,11 @@ public:
 
     ChainIndexResult add_block(Hash256 id, Hash256 parent, Height height,
                                ChainWork work, std::uint64_t timestamp) {
-        if (!active_tip_) return {ChainIndexError::missing_genesis, std::nullopt};
-        if (entries_.find(id) != entries_.end())
-            return {ChainIndexError::duplicate_block, std::nullopt};
+        const auto error = check_block(id, parent, height, work);
+        if (error != ChainIndexError::none) return {error, std::nullopt};
         const auto parent_iterator = entries_.find(parent);
-        if (parent_iterator == entries_.end())
-            return {ChainIndexError::unknown_parent, std::nullopt};
-        if (parent_iterator->second.height == std::numeric_limits<Height>::max() ||
-            height != parent_iterator->second.height + 1U)
-            return {ChainIndexError::invalid_height, std::nullopt};
-        if (is_zero(work)) return {ChainIndexError::zero_block_work, std::nullopt};
         const auto total = add_chain_work(parent_iterator->second.accumulated_work, work);
-        if (!total) return {ChainIndexError::accumulated_work_overflow, std::nullopt};
+        // check_block already proved this cannot overflow.
         entries_.emplace(id, ChainEntry{id, parent, height, work, *total, timestamp});
 
         const auto& current = entries_.at(*active_tip_);

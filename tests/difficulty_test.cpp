@@ -37,6 +37,17 @@ int main() {
               "bounded compact proof of work accepted");
         check(!hash_meets_compact_target(low_hash, 0x1d01ffffU, *base),
               "target above proof-of-work limit rejected");
+        const auto base_work = work_for_compact_target(base_compact, *base);
+        check(base_work && !is_zero(*base_work), "compact target produces work");
+        const auto easier_target = decode_compact_target(0x1d01ffffU);
+        check(easier_target && work_for_target(*easier_target) < *base_work,
+              "easier target contributes less accumulated work");
+        Target256 maximum;
+        maximum.limbs.fill(UINT32_MAX);
+        Target256 one;
+        one.limbs[0] = 1U;
+        check(work_for_target(maximum) == one,
+              "maximum target has exactly one unit of work");
 
         DifficultyParameters parameters;
         parameters.target_block_seconds = 60U;

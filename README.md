@@ -14,6 +14,17 @@ Confirmed economics:
 - 60-block reward maturity
 - No premine
 
-Stage 5 currently includes canonical block and transaction encoding, transaction Merkle roots, strict bounded decoding, contextual block validation, overflow-checked 256-bit accumulated work, strongest-chain selection, and reorganization planning.
+Stage 5 prototype checkpoints are complete. The branch includes canonical block and
+transaction encoding, bounded decoding, contextual validation, exact compact-target
+and chain-work arithmetic, 60-block difficulty adjustment, median-time rules, a
+checksummed append-only database with torn-write recovery, strongest-chain selection,
+atomic reorganization state, and an integrated local validation/mining/restart pipeline.
 
-Run `make test` or use CMake/CTest. The first performance goal remains 100 sustained private TPS across multiple nodes on published hardware; this is a target, not a current performance claim.
+Run `make test` or use CMake/CTest. Linux, Windows and sanitizer builds run in GitHub
+Actions.
+
+The local miner uses an injected proof-of-work hash so consensus behavior can be tested
+deterministically. Stage 4's KawPoW implementation still needs its final AMD hardware
+evidence and later testnet wiring. Stage 6 will define the mandatory private-transaction
+body and shielded state. The first performance goal remains 100 sustained private TPS
+across multiple nodes on published hardware; it is a target, not a current claim.

@@ -50,14 +50,15 @@ BlockValidationError validate_block(const Block& block,
     if (block.transactions.size() > limits.max_transactions)
         return BlockValidationError::too_many_transactions;
     std::size_t encoded_size = 132U;
+    if (encoded_size > limits.max_block_bytes)
+        return BlockValidationError::block_too_large;
     for (const auto& transaction : block.transactions) {
         if (transaction.version != limits.transaction_version)
             return BlockValidationError::unsupported_transaction_version;
         if (transaction.body.size() > limits.max_transaction_body_bytes)
             return BlockValidationError::transaction_too_large;
-        if (transaction.body.size() > limits.max_block_bytes ||
-            encoded_size > limits.max_block_bytes - transaction.body.size() ||
-            encoded_size + transaction.body.size() > limits.max_block_bytes - 8U)
+        if (transaction.body.size() > limits.max_block_bytes - encoded_size ||
+            8U > limits.max_block_bytes - encoded_size - transaction.body.size())
             return BlockValidationError::block_too_large;
         encoded_size += 8U + transaction.body.size();
     }

@@ -106,6 +106,59 @@ inline bool hash_meets_compact_target(const Hash256& hash, std::uint32_t compact
            hash_meets_target(hash, *target);
 }
 
+inline Target256 work_for_target(const Target256& target) {
+    // Exact floor(2^256 / (target + 1)), matching accumulated-work selection.
+    std::array<std::uint32_t, 9> divisor{};
+    std::copy(target.limbs.begin(), target.limbs.end(), divisor.begin());
+    std::uint64_t carry = 1U;
+    for (auto& limb : divisor) {
+        const auto sum = static_cast<std::uint64_t>(limb) + carry;
+        limb = static_cast<std::uint32_t>(sum);
+        carry = sum >> 32U;
+    }
+
+    std::array<std::uint32_t, 9> remainder{};
+    Target256 quotient;
+    const auto greater_or_equal = [](const auto& left, const auto& right) {
+        for (std::size_t i = left.size(); i != 0U; --i) {
+            if (left[i - 1U] != right[i - 1U])
+                return left[i - 1U] > right[i - 1U];
+        }
+        return true;
+    };
+    for (std::size_t bit = 257U; bit != 0U; --bit) {
+        std::uint64_t shift_carry = 0U;
+        for (auto& limb : remainder) {
+            const auto shifted = (static_cast<std::uint64_t>(limb) << 1U) |
+                                 shift_carry;
+            limb = static_cast<std::uint32_t>(shifted);
+            shift_carry = shifted >> 32U;
+        }
+        const auto input_bit = bit - 1U;
+        if (input_bit == 256U) remainder[0] |= 1U;
+        if (!greater_or_equal(remainder, divisor)) continue;
+        std::uint64_t borrow = 0U;
+        for (std::size_t i = 0; i < remainder.size(); ++i) {
+            const auto subtrahend = static_cast<std::uint64_t>(divisor[i]) + borrow;
+            const auto current = static_cast<std::uint64_t>(remainder[i]);
+            remainder[i] = static_cast<std::uint32_t>(current - subtrahend);
+            borrow = current < subtrahend ? 1U : 0U;
+        }
+        if (input_bit < 256U)
+            quotient.limbs[input_bit / 32U] |= 1U << (input_bit % 32U);
+    }
+    return quotient;
+}
+
+inline std::optional<Target256> work_for_compact_target(
+        std::uint32_t compact, const Target256& proof_of_work_limit) {
+    const auto target = decode_compact_target(compact);
+    if (!target || !is_canonical_compact_target(compact) ||
+        proof_of_work_limit < *target)
+        return std::nullopt;
+    return work_for_target(*target);
+}
+
 struct DifficultyParameters {
     std::uint64_t target_block_seconds = 60U;
     std::uint32_t retarget_interval = 60U;
