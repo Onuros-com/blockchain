@@ -14,6 +14,9 @@ if(ONUROS_ORCHARD_FFI_LIBRARY)
 endif()
 
 set(ONUROS_TESTS economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test)
+if(ONUROS_ORCHARD_FFI_LIBRARY)
+  list(APPEND ONUROS_TESTS private_node_orchard_pipeline_test)
+endif()
 foreach(target ${ONUROS_TESTS})
   add_executable(${target} tests/${target}.cpp)
   target_link_libraries(${target} PRIVATE onuros_core)
@@ -58,3 +61,9 @@ add_test(NAME private_mempool COMMAND private_mempool_test)
 add_test(NAME private_block COMMAND private_block_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
+if(ONUROS_ORCHARD_FFI_LIBRARY)
+  add_test(NAME private_node_orchard_pipeline
+           COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-private-node-orchard-test.sh
+                   ${CMAKE_CURRENT_SOURCE_DIR}/crypto/orchard-ffi/target/release/private_verify_benchmark
+                   $<TARGET_FILE:private_node_orchard_pipeline_test>)
+endif()

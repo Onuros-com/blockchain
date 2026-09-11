@@ -1,13 +1,16 @@
+use incrementalmerkletree::{Hashable, Level};
 use onuros_orchard_ffi::onuros_orchard_verify;
 use orchard::{
     builder::{Builder, BundleType},
     bundle::{Authorized, BundleVersion},
     circuit::{OrchardCircuitVersion, ProvingKey},
-    keys::{FullViewingKey, Scope, SpendingKey},
+    keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
+    note::{RandomSeed, Rho},
+    tree::{MerkleHashOrchard, MerklePath},
     value::NoteValue,
-    Anchor, Bundle,
+    Anchor, Bundle, Note,
 };
-use rand::rngs::OsRng;
+use rand::{rngs::{OsRng, StdRng}, RngCore, SeedableRng};
 use std::{env, fs, hint::black_box, path::Path, thread, time::{Duration, Instant}};
 
 const MAGIC: &[u8; 4] = b"ONP2";
@@ -75,6 +78,73 @@ fn fixture() -> (Vec<u8>, [u8; 32]) {
     (encode_bundle(&bundle, 7), sighash)
 }
 
+// Builds a deterministic, genuinely spendable fixture for the cross-language
+// node-pipeline test. Running this twice with different signature digests keeps
+// every proof input and proof byte identical; only the spend and binding
+// signatures change. This lets C++ calculate the canonical Onuros digest from
+// the first encoding before Rust signs the final encoding.
+fn onuros_spend_fixture(sighash: [u8; 32]) -> Vec<u8> {
+    let mut rng = StdRng::from_seed([0x4f; 32]);
+    let version = BundleVersion::orchard_v2();
+    let sk = Option::<SpendingKey>::from(SpendingKey::from_bytes([0; 32]))
+        .expect("canonical integration-test spending key");
+    let fvk = FullViewingKey::from(&sk);
+    let recipient = fvk.address_at(0u32, Scope::External);
+    let rho = Option::<Rho>::from(Rho::from_bytes(&[0; 32]))
+        .expect("canonical integration-test rho");
+    let rseed = loop {
+        let mut bytes = [0; 32];
+        rng.fill_bytes(&mut bytes);
+        if let Some(rseed) = Option::<RandomSeed>::from(
+            RandomSeed::from_bytes(bytes, &rho),
+        ) {
+            break rseed;
+        }
+    };
+    let note = Option::<Note>::from(Note::from_parts(
+        recipient,
+        NoteValue::from_raw(5_007),
+        rho,
+        rseed,
+        version.note_version(),
+    ))
+    .expect("valid integration-test note");
+    let auth_path = std::array::from_fn(|level| {
+        <MerkleHashOrchard as Hashable>::empty_root(Level::from(level as u8))
+    });
+    let merkle_path = MerklePath::from_parts(0, auth_path);
+    let anchor = merkle_path.root(note.commitment().into());
+    let mut builder = Builder::new(
+        BundleType::DEFAULT,
+        version,
+        version.default_flags(),
+        anchor,
+    )
+    .expect("valid Orchard v2 builder");
+    builder
+        .add_spend(fvk, note, merkle_path)
+        .expect("valid witnessed spend");
+    builder
+        .add_output(None, recipient, NoteValue::from_raw(5_000), [0; 512])
+        .expect("valid output");
+    let proving_key = ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
+    let bundle: Bundle<Authorized, i64> = builder
+        .build(&mut rng)
+        .expect("builder succeeds")
+        .expect("non-empty bundle")
+        .0
+        .create_proof(&proving_key, &mut rng)
+        .expect("proof creation succeeds")
+        .apply_signatures(
+            &mut rng,
+            sighash,
+            &[SpendAuthorizingKey::from(&sk)],
+        )
+        .expect("all signatures finalize");
+    assert_eq!(*bundle.value_balance(), 7);
+    encode_bundle(&bundle, 7)
+}
+
 fn wait_for_start(ready: &Path, start: &Path) {
     fs::write(ready, b"ready\n").expect("write worker readiness marker");
     while !start.exists() {
@@ -119,6 +189,16 @@ fn main() {
             bytes.extend_from_slice(&encoded);
             fs::write(&args[2], bytes).expect("write benchmark fixture");
         }
+        Some("--generate-onuros") if args.len() == 3 || args.len() == 4 => {
+            let sighash = if args.len() == 4 {
+                let bytes = fs::read(&args[3]).expect("read Onuros digest");
+                bytes.try_into().expect("Onuros digest must be 32 bytes")
+            } else {
+                [0; 32]
+            };
+            fs::write(&args[2], onuros_spend_fixture(sighash))
+                .expect("write Onuros integration fixture");
+        }
         Some("--verify") if args.len() == 4 || args.len() == 6 => {
             let bytes = fs::read(&args[2]).expect("read benchmark fixture");
             assert!(bytes.len() > 32, "benchmark fixture is truncated");
@@ -144,7 +224,7 @@ fn main() {
             run(encoded, sighash, iterations, None);
         }
         _ => panic!(
-            "usage: private_verify_benchmark [ITERATIONS] | --generate FILE | --verify FILE ITERATIONS [READY START]"
+            "usage: private_verify_benchmark [ITERATIONS] | --generate FILE | --generate-onuros FILE [DIGEST_FILE] | --verify FILE ITERATIONS [READY START]"
         ),
     }
 }

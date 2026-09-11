@@ -10,8 +10,10 @@ on:
       - "core/include/onuros/private_transaction.hpp"
       - "core/include/onuros/private_block.hpp"
       - "tests/orchard_ffi_backend_test.cpp"
+      - "tests/private_node_orchard_pipeline_test.cpp"
       - "tests/private_block_test.cpp"
       - "scripts/run-private-tps.sh"
+      - "scripts/run-private-node-orchard-test.sh"
       - ".github/workflows/orchard-ffi.yml"
   pull_request:
     paths:
@@ -21,8 +23,10 @@ on:
       - "core/include/onuros/private_transaction.hpp"
       - "core/include/onuros/private_block.hpp"
       - "tests/orchard_ffi_backend_test.cpp"
+      - "tests/private_node_orchard_pipeline_test.cpp"
       - "tests/private_block_test.cpp"
       - "scripts/run-private-tps.sh"
+      - "scripts/run-private-node-orchard-test.sh"
       - ".github/workflows/orchard-ffi.yml"
 
 permissions:
