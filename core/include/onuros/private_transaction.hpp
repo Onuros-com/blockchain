@@ -252,9 +252,9 @@ inline Hash256 private_signature_digest(
                             signature_offset_in_action;
         std::fill(encoded.begin() + static_cast<std::ptrdiff_t>(offset),
                   encoded.begin() + static_cast<std::ptrdiff_t>(offset + 64U),
-                  0U);
+                  std::uint8_t{0});
     }
-    std::fill(encoded.end() - 64, encoded.end(), 0U);
+    std::fill(encoded.end() - 64, encoded.end(), std::uint8_t{0});
     constexpr std::array<std::uint8_t, 22> domain{
         'O', 'n', 'u', 'r', 'o', 's', 'P', 'r', 'i', 'v', 'a', 't', 'e',
         'S', 'i', 'g', 'H', 'a', 's', 'h', 'V', '2'};
