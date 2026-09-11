@@ -24,6 +24,13 @@ jobs:
         run: cargo test --manifest-path crypto/orchard-ffi/Cargo.toml
       - name: Build release bridge
         run: cargo build --manifest-path crypto/orchard-ffi/Cargo.toml --release
+      - name: Link C++ consensus boundary to Orchard bridge
+        run: |
+          cmake -S . -B build-orchard \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DONUROS_ORCHARD_FFI_LIBRARY="$PWD/crypto/orchard-ffi/target/release/libonuros_orchard_ffi.so"
+          cmake --build build-orchard --parallel
+          ctest --test-dir build-orchard --output-on-failure
       - name: Preserve dependency lock
         uses: actions/upload-artifact@v4
         with:

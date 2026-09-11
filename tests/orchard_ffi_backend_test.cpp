@@ -13,6 +13,7 @@ void check(bool condition) {
 int status_to_return = 0;
 std::size_t observed_size = 0U;
 Hash256 observed_id{};
+std::size_t observed_root_count = 0U;
 
 int scripted_verify(const std::uint8_t*, std::size_t size,
                     const std::uint8_t* transaction_id_value) {
@@ -20,6 +21,15 @@ int scripted_verify(const std::uint8_t*, std::size_t size,
     for (std::size_t i = 0; i < observed_id.size(); ++i)
         observed_id[i] = transaction_id_value[i];
     return status_to_return;
+}
+
+int scripted_root(const std::uint8_t* commitments, std::size_t count,
+                  std::uint8_t* output) {
+    observed_root_count = count;
+    if (status_to_return != 0) return status_to_return;
+    for (std::size_t i = 0; i < 32U; ++i)
+        output[i] = commitments == nullptr ? 0U : commitments[i];
+    return 0;
 }
 
 PrivateTransactionBundle bundle() {
@@ -71,5 +81,18 @@ int main() {
     }
     status_to_return = 99;
     check(backend.verify(candidate, id).error == PrivateProofError::invalid_proof);
+
+    OrchardFfiRootCalculator unavailable_root;
+    check(!unavailable_root.calculate({}, {}).has_value());
+    OrchardFfiRootCalculator root(scripted_root);
+    status_to_return = 0;
+    const auto calculated = root.calculate({candidate.anchor},
+                                           {candidate.actions[0].note_commitment});
+    check(calculated.has_value() && *calculated == candidate.anchor);
+    check(observed_root_count == 2U);
+    const auto empty = root.calculate({}, {});
+    check(empty.has_value() && *empty == Hash256{});
+    status_to_return = static_cast<int>(OrchardFfiStatus::malformed);
+    check(!root.calculate({candidate.anchor}, {}).has_value());
     return 0;
 }

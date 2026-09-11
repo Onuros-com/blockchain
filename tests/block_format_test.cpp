@@ -21,6 +21,7 @@ BlockHeader sample_header() {
     header.height = 42;
     header.previous[0] = 0xa5;
     header.transactions_root[31] = 0x5a;
+    header.shielded_root[15] = 0x3c;
     header.timestamp = 1'800'000'000ULL;
     header.compact_target = 0x1d00ffffU;
     header.nonce = 0x0123456789abcdefULL;
@@ -70,7 +71,8 @@ int main() {
 
         auto header = sample_header();
         const auto encoded_header = encode_block_header(header);
-        check(encoded_header.size() == 128U, "fixed block header encoding size");
+        check(encoded_header.size() == block_header_encoded_size,
+              "fixed block header encoding size");
         check(encoded_header[0] == 3U && encoded_header[4] == 42U,
               "block header canonical little-endian encoding");
         const auto original_id = block_id(header);
@@ -86,6 +88,10 @@ int main() {
         mutation = header;
         mutation.transactions_root[0] ^= 1U;
         check(block_id(mutation) != original_id, "transactions bind block identifier");
+        mutation = header;
+        mutation.shielded_root[0] ^= 1U;
+        check(block_id(mutation) != original_id,
+              "shielded root binds block identifier");
         mutation = header;
         ++mutation.timestamp;
         check(block_id(mutation) != original_id, "timestamp binds block identifier");

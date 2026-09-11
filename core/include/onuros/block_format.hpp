@@ -23,6 +23,9 @@ struct BlockHeader {
     Height height = 0;
     Hash256 previous{};
     Hash256 transactions_root{};
+    // Stage 6 consensus commitment to the active Orchard note tree after
+    // applying this block. This is part of the block id and PoW preimage.
+    Hash256 shielded_root{};
     std::uint64_t timestamp = 0;
     std::uint32_t compact_target = 0;
     std::uint64_t nonce = 0;
@@ -33,6 +36,7 @@ inline bool operator==(const BlockHeader& left, const BlockHeader& right) {
     return left.version == right.version && left.height == right.height &&
            left.previous == right.previous &&
            left.transactions_root == right.transactions_root &&
+           left.shielded_root == right.shielded_root &&
            left.timestamp == right.timestamp &&
            left.compact_target == right.compact_target &&
            left.nonce == right.nonce && left.mix_hash == right.mix_hash;
@@ -42,6 +46,10 @@ struct Block {
     BlockHeader header;
     std::vector<TransactionEnvelope> transactions;
 };
+
+inline constexpr std::size_t block_header_encoded_size = 160U;
+inline constexpr std::size_t block_prefix_encoded_size =
+    block_header_encoded_size + sizeof(std::uint32_t);
 
 struct DecodeLimits {
     std::size_t max_block_bytes;
@@ -110,6 +118,7 @@ inline bool read_block_header(ByteReader& reader, BlockHeader& header) {
            reader.read_little_endian(header.height) &&
            reader.read_hash(header.previous) &&
            reader.read_hash(header.transactions_root) &&
+           reader.read_hash(header.shielded_root) &&
            reader.read_little_endian(header.timestamp) &&
            reader.read_little_endian(header.compact_target) &&
            reader.read_little_endian(header.nonce) &&
@@ -157,11 +166,12 @@ inline Hash256 transaction_root(const std::vector<TransactionEnvelope>& transact
 
 inline std::vector<std::uint8_t> encode_block_header(const BlockHeader& header) {
     std::vector<std::uint8_t> output;
-    output.reserve(128U);
+    output.reserve(block_header_encoded_size);
     detail::append_little_endian(output, header.version);
     detail::append_little_endian(output, header.height);
     detail::append_hash(output, header.previous);
     detail::append_hash(output, header.transactions_root);
+    detail::append_hash(output, header.shielded_root);
     detail::append_little_endian(output, header.timestamp);
     detail::append_little_endian(output, header.compact_target);
     detail::append_little_endian(output, header.nonce);
@@ -198,8 +208,8 @@ inline std::optional<TransactionEnvelope> decode_transaction(
 
 inline std::optional<Block> decode_block(const std::vector<std::uint8_t>& input,
                                          DecodeLimits limits) {
-    constexpr std::size_t header_and_count_size = 132U;
-    if (input.size() > limits.max_block_bytes || input.size() < header_and_count_size)
+    if (input.size() > limits.max_block_bytes ||
+        input.size() < block_prefix_encoded_size)
         return std::nullopt;
     detail::ByteReader reader(input);
     Block block;

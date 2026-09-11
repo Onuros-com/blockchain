@@ -26,6 +26,8 @@ sanitizer builds run in GitHub Actions.
 
 The local miner uses an injected proof-of-work hash so consensus behavior can be tested
 deterministically. Stage 4's KawPoW implementation still needs its final AMD hardware
-evidence and later testnet wiring. Stage 6 is defining the mandatory private-transaction body and shielded state.
-See [the Stage 6 status](docs/stage-6-status.md). The first performance goal remains 100 sustained private TPS
-across multiple nodes on published hardware; it is a target, not a current claim.
+evidence and later testnet wiring. Stage 6 implements the mandatory private-transaction
+body, pinned Orchard verification boundary, shielded state commitment/persistence,
+private reward binding, and bounded mempool. See [the Stage 6 status](docs/stage-6-status.md).
+The first performance goal remains 100 sustained private TPS across multiple processes
+on published hardware; it is a target, not a current claim.

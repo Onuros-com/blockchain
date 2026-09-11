@@ -1,9 +1,11 @@
+use incrementalmerkletree::{frontier::Frontier, Hashable};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorized, BundleVersion, Flags},
     circuit::{OrchardCircuitVersion, VerifyingKey},
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     primitives::redpallas::{self, Binding, SpendAuth},
+    tree::MerkleHashOrchard,
     value::ValueCommitment,
     Action, Anchor, Bundle, Proof,
 };
@@ -15,6 +17,7 @@ const PROOF_VERSION: u32 = 1;
 const ENABLED_FLAGS: u8 = 3;
 const MAX_ACTIONS: usize = 6_000;
 
+#[derive(Debug)]
 #[repr(i32)]
 enum Status {
     Verified = 0,
@@ -185,27 +188,106 @@ pub unsafe extern "C" fn onuros_orchard_verify(
     .unwrap_or(Status::InternalError as i32)
 }
 
+fn calculate_root(bytes: &[u8], count: usize) -> Result<[u8; 32], Status> {
+    if count > u32::MAX as usize ||
+        bytes.len() != count.checked_mul(32).ok_or(Status::Malformed)? {
+        return Err(Status::Malformed);
+    }
+    let mut frontier = Frontier::<MerkleHashOrchard, 32>::empty();
+    for encoded in bytes.chunks_exact(32) {
+        let cmx = Option::<ExtractedNoteCommitment>::from(
+            ExtractedNoteCommitment::from_bytes(
+                encoded.try_into().map_err(|_| Status::Malformed)?,
+            ),
+        )
+        .ok_or(Status::Malformed)?;
+        if !frontier.append(MerkleHashOrchard::from_cmx(&cmx)) {
+            return Err(Status::Malformed);
+        }
+    }
+    let root: Anchor = frontier.root().into();
+    Ok(root.to_bytes())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn onuros_orchard_root(
+    commitments: *const u8,
+    count: usize,
+    output: *mut u8,
+) -> i32 {
+    if output.is_null() || (count != 0 && commitments.is_null()) {
+        return Status::Malformed as i32;
+    }
+    catch_unwind(|| {
+        let length = match count.checked_mul(32) {
+            Some(length) => length,
+            None => return Status::Malformed as i32,
+        };
+        let input = if length == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(commitments, length) }
+        };
+        match calculate_root(input, count) {
+            Ok(root) => {
+                unsafe { std::ptr::copy_nonoverlapping(root.as_ptr(), output, root.len()) };
+                Status::Verified as i32
+            }
+            Err(status) => status as i32,
+        }
+    })
+    .unwrap_or(Status::InternalError as i32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::{
-        strategy::{Strategy, ValueTree},
-        test_runner::TestRunner,
+    use orchard::{
+        builder::{Builder, BundleType},
+        circuit::ProvingKey,
+        keys::{FullViewingKey, Scope, SpendingKey},
+        value::NoteValue,
     };
+    use rand::rngs::OsRng;
 
     #[test]
     fn malformed_input_fails_closed() {
         assert_eq!(verify(&[], &[0; 32]) as i32, Status::Malformed as i32);
         assert_eq!(verify(b"ONP1", &[0; 32]) as i32, Status::Malformed as i32);
+        assert_eq!(calculate_root(&[0; 31], 1).unwrap_err() as i32,
+                   Status::Malformed as i32);
+        assert!(calculate_root(&[], 0).is_ok());
     }
 
     #[test]
     fn verifies_real_orchard_proof_and_signatures() {
-        let mut runner = TestRunner::deterministic();
-        let tree = orchard::builder::testing::arb_bundle::<i64>()
-            .new_tree(&mut runner)
-            .expect("valid Orchard bundle strategy");
-        let bundle = tree.current();
+        let mut rng = OsRng;
+        let version = BundleVersion::orchard_v2();
+        let sk = SpendingKey::random(&mut rng);
+        let recipient = FullViewingKey::from(&sk)
+            .address_at(0u32, Scope::External);
+        let mut builder = Builder::new(
+            BundleType::DEFAULT,
+            version,
+            version.default_flags(),
+            Anchor::empty_tree(),
+        )
+        .expect("valid Orchard v2 builder");
+        builder
+            .add_output(None, recipient, NoteValue::from_raw(5_000), [0; 512])
+            .expect("valid output");
+        let proving_key =
+            ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
+        let bundle: Bundle<Authorized, i64> = builder
+            .build(&mut rng)
+            .expect("builder succeeds")
+            .expect("non-empty bundle")
+            .0
+            .create_proof(&proving_key, &mut rng)
+            .expect("proof creation succeeds")
+            .prepare(&mut rng, [0; 32])
+            .finalize()
+            .expect("signatures finalize");
         assert_eq!(verify_bundle(&bundle, &[0; 32]) as i32,
                    Status::Verified as i32);
     }

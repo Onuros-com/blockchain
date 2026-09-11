@@ -78,6 +78,16 @@ struct ShieldedUndo {
     std::vector<Hash256> commitments;
 };
 
+struct ShieldedSnapshot {
+    Hash256 genesis_block{};
+    Hash256 genesis_root{};
+    Hash256 tip_block{};
+    Hash256 current_root{};
+    std::vector<Hash256> nullifiers;
+    std::vector<Hash256> commitments;
+    std::vector<ShieldedUndo> history;
+};
+
 class ShieldedState;
 
 class PrivateBlockAdmission {
@@ -134,6 +144,7 @@ public:
 
 class ShieldedState {
     Hash256 genesis_block_{};
+    Hash256 genesis_root_{};
     Hash256 tip_block_{};
     Hash256 current_root_{};
     std::set<Hash256> nullifiers_;
@@ -149,7 +160,8 @@ class ShieldedState {
 
 public:
     ShieldedState(Hash256 genesis_block, Hash256 initial_root)
-        : genesis_block_(genesis_block), tip_block_(genesis_block),
+        : genesis_block_(genesis_block), genesis_root_(initial_root),
+          tip_block_(genesis_block),
           current_root_(initial_root) {
         active_roots_.emplace(initial_root, 1U);
     }
@@ -168,6 +180,61 @@ public:
     std::size_t height() const { return history_.size(); }
     std::size_t spent_count() const { return nullifiers_.size(); }
     std::size_t commitment_count() const { return commitments_.size(); }
+    const std::vector<ShieldedUndo>& history() const { return history_; }
+
+    std::vector<Hash256> ordered_commitments() const {
+        std::vector<Hash256> ordered;
+        ordered.reserve(commitments_.size());
+        for (const auto& undo : history_)
+            ordered.insert(ordered.end(), undo.commitments.begin(),
+                           undo.commitments.end());
+        return ordered;
+    }
+
+    ShieldedSnapshot snapshot() const {
+        return {genesis_block_, genesis_root_, tip_block_, current_root_,
+                {nullifiers_.begin(), nullifiers_.end()},
+                {commitments_.begin(), commitments_.end()}, history_};
+    }
+
+    static std::optional<ShieldedState> restore(
+            const ShieldedSnapshot& snapshot) {
+        ShieldedState restored(snapshot.genesis_block, snapshot.genesis_root);
+        Hash256 expected_parent = snapshot.genesis_block;
+        Hash256 expected_root = snapshot.genesis_root;
+        std::set<Hash256> expected_nullifiers;
+        std::set<Hash256> expected_commitments;
+        for (const auto& undo : snapshot.history) {
+            if (undo.parent_block != expected_parent ||
+                undo.previous_root != expected_root ||
+                undo.block_id == snapshot.genesis_block)
+                return std::nullopt;
+            for (const auto& nullifier : undo.nullifiers)
+                if (!expected_nullifiers.insert(nullifier).second)
+                    return std::nullopt;
+            for (const auto& commitment : undo.commitments)
+                if (!expected_commitments.insert(commitment).second)
+                    return std::nullopt;
+            ++restored.active_roots_[undo.resulting_root];
+            expected_parent = undo.block_id;
+            expected_root = undo.resulting_root;
+        }
+        if (snapshot.tip_block != expected_parent ||
+            snapshot.current_root != expected_root ||
+            snapshot.nullifiers.size() != expected_nullifiers.size() ||
+            snapshot.commitments.size() != expected_commitments.size() ||
+            !std::equal(snapshot.nullifiers.begin(), snapshot.nullifiers.end(),
+                        expected_nullifiers.begin()) ||
+            !std::equal(snapshot.commitments.begin(), snapshot.commitments.end(),
+                        expected_commitments.begin()))
+            return std::nullopt;
+        restored.tip_block_ = snapshot.tip_block;
+        restored.current_root_ = snapshot.current_root;
+        restored.nullifiers_ = std::move(expected_nullifiers);
+        restored.commitments_ = std::move(expected_commitments);
+        restored.history_ = snapshot.history;
+        return restored;
+    }
 
     PrivateAdmissionError connect(const Hash256& block_id,
                                   const Hash256& resulting_root,
