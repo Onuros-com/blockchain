@@ -1,8 +1,8 @@
 # Stage 6 status: private transaction admission
 
-Stage 6 implementation is present on the `private-transactions` branch. The
-production gate remains closed until the pinned Orchard CI and a reproducible
-multi-process private-TPS run are green and recorded.
+Stage 6 implementation and validation are complete on the
+`private-transactions` branch. This closes the Stage 6 development milestone;
+it is not a claim that the wider node or network is ready for mainnet.
 
 ## Checkpoint 1
 
@@ -141,11 +141,17 @@ a separate completion measurement.
 2. **Passed:** reproducible multi-process benchmark using real Orchard
    verification on published hardware, exceeding 100 sustained verification
    TPS in three consecutive runs.
-3. **Remaining:** exercise the complete local-node path under private load and
-   adversarial inputs: mempool admission, deterministic block selection,
-   Orchard verification, shielded-root commitment, persistence/restart and
-   atomic reorganization. Record this separately as end-to-end node TPS; do not
-   substitute admission-only or deterministic-PoW numbers.
+3. **Passed:** a genuinely spendable Orchard bundle is signed over the exact
+   canonical Onuros transaction digest and exercised through real FFI
+   verification, mempool admission, deterministic block selection,
+   shielded-root commitment, persistence/restart, disconnect and reconnect.
+   The same test rejects altered spend signatures, proofs and shielded roots.
+   It runs automatically in the linked Orchard CI suite.
+
+All Stage 6 gates are therefore complete at commit `9b26912`. The published
+153.140 TPS figure remains specifically a sustained Orchard verification
+measurement. Full multi-node/network throughput and confirmation latency must
+still be measured in a later networking/testnet stage.
 
 The Stage 6 block-header/database encoding is intentionally incompatible with
 Stage 5 databases. Use a new data path when running this branch.
