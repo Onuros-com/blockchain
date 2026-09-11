@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
-TESTS = economics_test block_format_test block_validation_test chain_index_test
+TESTS = economics_test block_format_test block_validation_test chain_index_test difficulty_test
 
 .PHONY: test sanitize clean
 
@@ -22,4 +22,4 @@ sanitize:
 	done
 
 clean:
-	$(RM) build/economics_test build/block_format_test build/block_validation_test build/chain_index_test
+	$(RM) $(addprefix build/,$(TESTS))

@@ -32,11 +32,15 @@ Checkpoint 3 adds overflow-checked 256-bit accumulated work, a fork-aware block
 index, strongest-chain selection and explicit ordered disconnect/connect plans.
 Equal-work branches do not cause unnecessary tip changes.
 
-1. Compact-target conversion and difficulty adjustment.
-2. Median-time calculation over chain history.
-3. Persistent block/index database with atomic restart recovery.
-4. Atomic undo/application of reorganization plans.
-5. Local mining/validation/restart integration and invalid-block test suite.
+Checkpoint 4 adds canonical compact-target conversion, proof-of-work limit checks,
+big-endian hash/target comparison, a deterministic 60-block retarget using the
+confirmed 60-second block interval, a four-times adjustment clamp, and median-time
+calculation over the newest 11 ancestors. The retarget parameters remain explicit
+and invalid or non-canonical targets fail closed.
+
+1. Persistent block/index database with atomic restart recovery.
+2. Atomic undo/application of reorganization plans.
+3. Local mining/validation/restart integration and invalid-block test suite.
 
 ## Throughput direction
 

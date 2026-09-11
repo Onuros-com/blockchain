@@ -33,7 +33,7 @@ Block valid_block() {
 int main() {
     try {
         const BlockValidationLimits limits{1U, 1U, 1024U, 8U, 128U};
-        BlockContext context;
+        BlockContext context{};
         context.expected_height = 8;
         context.expected_parent[0] = 0x11U;
         context.median_time_past = 999U;
