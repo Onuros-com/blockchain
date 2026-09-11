@@ -2,6 +2,7 @@
 
 #include "onuros/private_admission.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -13,8 +14,12 @@
 
 namespace onuros {
 
+static_assert(sizeof(Amount) == sizeof(std::uint64_t) &&
+              std::numeric_limits<Amount>::is_signed,
+              "private value balance requires a signed 64-bit Amount");
+
 inline constexpr std::uint32_t private_transaction_envelope_version = 2U;
-inline constexpr std::uint32_t private_bundle_format_version = 1U;
+inline constexpr std::uint32_t private_bundle_format_version = 2U;
 inline constexpr std::uint32_t orchard_proof_system_version = 1U;
 inline constexpr std::uint8_t orchard_enabled_flags = 0x03U;
 inline constexpr std::size_t orchard_encrypted_note_size = 580U;
@@ -45,6 +50,9 @@ struct PrivateTransactionBundle {
     std::uint32_t proof_system_version = orchard_proof_system_version;
     std::uint8_t flags = orchard_enabled_flags;
     Hash256 anchor{};
+    // Signed net value leaving the Orchard pool. This is a proof input and is
+    // distinct from the non-negative ONUROS transaction fee.
+    Amount value_balance = 0;
     Amount fee = 0;
     std::vector<PrivateActionBundle> actions;
     std::vector<std::uint8_t> proof;
@@ -81,7 +89,7 @@ struct PrivateBundleDecodeResult {
 namespace private_detail {
 
 inline constexpr std::array<std::uint8_t, 4> bundle_magic{
-    0x4fU, 0x4eU, 0x50U, 0x31U // "ONP1"
+    0x4fU, 0x4eU, 0x50U, 0x32U // "ONP2"
 };
 
 template <typename Integer>
@@ -200,6 +208,8 @@ inline std::vector<std::uint8_t> encode_private_bundle(
     output.push_back(bundle.flags);
     private_detail::append_hash(output, bundle.anchor);
     private_detail::append_little(
+        output, static_cast<std::uint64_t>(bundle.value_balance));
+    private_detail::append_little(
         output, static_cast<std::uint64_t>(bundle.fee));
     private_detail::append_little(
         output, static_cast<std::uint32_t>(bundle.actions.size()));
@@ -222,6 +232,35 @@ inline TransactionEnvelope make_private_transaction(
         const PrivateTransactionBundle& bundle) {
     return {private_transaction_envelope_version,
             encode_private_bundle(bundle)};
+}
+
+// The Orchard spend and binding signatures authorize this digest. It commits
+// to the entire canonical private body (including fee and proof) with only the
+// signature fields zeroed, avoiding a circular dependency on the final txid.
+inline Hash256 private_signature_digest(
+        const PrivateTransactionBundle& bundle) {
+    auto encoded = encode_private_bundle(bundle);
+    constexpr std::size_t fixed_prefix_size =
+        4U + 4U + 4U + 1U + 32U + 8U + 8U + 4U;
+    constexpr std::size_t action_size =
+        160U + orchard_encrypted_note_size +
+        orchard_outgoing_ciphertext_size + 64U;
+    constexpr std::size_t signature_offset_in_action =
+        action_size - 64U;
+    for (std::size_t i = 0; i < bundle.actions.size(); ++i) {
+        const auto offset = fixed_prefix_size + i * action_size +
+                            signature_offset_in_action;
+        std::fill(encoded.begin() + static_cast<std::ptrdiff_t>(offset),
+                  encoded.begin() + static_cast<std::ptrdiff_t>(offset + 64U),
+                  0U);
+    }
+    std::fill(encoded.end() - 64, encoded.end(), 0U);
+    constexpr std::array<std::uint8_t, 22> domain{
+        'O', 'n', 'u', 'r', 'o', 's', 'P', 'r', 'i', 'v', 'a', 't', 'e',
+        'S', 'i', 'g', 'H', 'a', 's', 'h', 'V', '2'};
+    std::vector<std::uint8_t> preimage(domain.begin(), domain.end());
+    preimage.insert(preimage.end(), encoded.begin(), encoded.end());
+    return double_sha256(preimage);
 }
 
 inline PrivateBundleDecodeResult decode_private_transaction(
@@ -254,6 +293,20 @@ inline PrivateBundleDecodeResult decode_private_transaction(
         return {Error::invalid_flags, std::nullopt};
     if (!reader.read_hash(bundle.anchor))
         return {Error::truncated, std::nullopt};
+
+    std::uint64_t encoded_value_balance = 0U;
+    if (!reader.read_little(encoded_value_balance))
+        return {Error::truncated, std::nullopt};
+    if (encoded_value_balance <=
+        static_cast<std::uint64_t>(std::numeric_limits<Amount>::max())) {
+        bundle.value_balance = static_cast<Amount>(encoded_value_balance);
+    } else {
+        const auto magnitude = (~encoded_value_balance) + 1U;
+        if (magnitude == (std::uint64_t{1} << 63U))
+            bundle.value_balance = std::numeric_limits<Amount>::min();
+        else
+            bundle.value_balance = -static_cast<Amount>(magnitude);
+    }
 
     std::uint64_t encoded_fee = 0U;
     if (!reader.read_little(encoded_fee))
@@ -314,7 +367,7 @@ public:
     virtual ~PrivateProofBackend() = default;
     virtual VerifiedPrivateEffects verify(
         const PrivateTransactionBundle& bundle,
-        const Hash256& transaction_id) const = 0;
+        const Hash256& signature_digest) const = 0;
 };
 
 class CanonicalPrivateTransactionVerifier final
@@ -340,7 +393,7 @@ public:
         }
 
         const auto& bundle = *decoded.bundle;
-        auto effects = backend_.verify(bundle, transaction_id(transaction));
+        auto effects = backend_.verify(bundle, private_signature_digest(bundle));
         if (effects.error != PrivateProofError::none) return effects;
 
         std::vector<Hash256> nullifiers;

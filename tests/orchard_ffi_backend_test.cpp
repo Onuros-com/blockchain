@@ -12,14 +12,14 @@ void check(bool condition) {
 
 int status_to_return = 0;
 std::size_t observed_size = 0U;
-Hash256 observed_id{};
+Hash256 observed_digest{};
 std::size_t observed_root_count = 0U;
 
 int scripted_verify(const std::uint8_t*, std::size_t size,
-                    const std::uint8_t* transaction_id_value) {
+                    const std::uint8_t* signature_digest) {
     observed_size = size;
-    for (std::size_t i = 0; i < observed_id.size(); ++i)
-        observed_id[i] = transaction_id_value[i];
+    for (std::size_t i = 0; i < observed_digest.size(); ++i)
+        observed_digest[i] = signature_digest[i];
     return status_to_return;
 }
 
@@ -49,15 +49,15 @@ PrivateTransactionBundle bundle() {
 int main() {
     const auto candidate = bundle();
     const auto envelope = make_private_transaction(candidate);
-    const auto id = transaction_id(envelope);
+    const auto digest = private_signature_digest(candidate);
 
     OrchardFfiBackend unavailable(nullptr);
-    check(unavailable.verify(candidate, id).error ==
+    check(unavailable.verify(candidate, digest).error ==
           PrivateProofError::backend_unavailable);
 
     OrchardFfiBackend backend(scripted_verify);
     status_to_return = static_cast<int>(OrchardFfiStatus::verified);
-    const auto verified = backend.verify(candidate, id);
+    const auto verified = backend.verify(candidate, digest);
     check(verified.error == PrivateProofError::none);
     check(verified.anchor == candidate.anchor);
     check(verified.nullifiers.size() == 1U &&
@@ -65,7 +65,7 @@ int main() {
     check(verified.commitments.size() == 1U &&
           verified.commitments[0] == candidate.actions[0].note_commitment);
     check(observed_size == envelope.body.size());
-    check(observed_id == id);
+    check(observed_digest == digest);
 
     const OrchardFfiStatus statuses[] = {
         OrchardFfiStatus::malformed, OrchardFfiStatus::invalid_proof,
@@ -77,10 +77,10 @@ int main() {
         PrivateProofError::backend_unavailable};
     for (std::size_t i = 0; i < 5U; ++i) {
         status_to_return = static_cast<int>(statuses[i]);
-        check(backend.verify(candidate, id).error == expected[i]);
+        check(backend.verify(candidate, digest).error == expected[i]);
     }
     status_to_return = 99;
-    check(backend.verify(candidate, id).error == PrivateProofError::invalid_proof);
+    check(backend.verify(candidate, digest).error == PrivateProofError::invalid_proof);
 
     OrchardFfiRootCalculator unavailable_root(nullptr);
     check(!unavailable_root.calculate({}, {}).has_value());

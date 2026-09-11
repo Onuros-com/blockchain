@@ -30,11 +30,15 @@ authenticated effects.
 
 The second checkpoint defines the consensus-facing private transaction container:
 
-- envelope version 2 carries an `ONP1` versioned private bundle;
+- envelope version 2 carries an `ONP2` versioned private bundle;
 - every action canonically encodes its value commitment, nullifier, randomized
   key, note commitment, ephemeral key, ciphertexts, and spend authorization;
-- the bundle commits an anchor, non-negative fee, proof-system version, proof,
-  and binding signature;
+- the bundle carries a signed Orchard value balance separately from its
+  non-negative ONUROS fee, plus an anchor, proof-system version, proof, and
+  binding signature;
+- spend and binding signatures authorize a domain-separated digest of the
+  canonical bundle (including fee and proof, excluding only signature bytes),
+  avoiding a circular dependency on the final transaction identifier;
 - the decoder applies body, action, ciphertext, and proof limits before
   allocation and rejects truncation, trailing bytes, empty fields, and unknown
   versions;

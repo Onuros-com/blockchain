@@ -11,8 +11,8 @@ use orchard::{
 };
 use std::{panic::catch_unwind, slice};
 
-const MAGIC: &[u8; 4] = b"ONP1";
-const FORMAT_VERSION: u32 = 1;
+const MAGIC: &[u8; 4] = b"ONP2";
+const FORMAT_VERSION: u32 = 2;
 const PROOF_VERSION: u32 = 1;
 const ENABLED_FLAGS: u8 = 3;
 const MAX_ACTIONS: usize = 6_000;
@@ -57,6 +57,10 @@ impl<'a> Reader<'a> {
         Some(u64::from_le_bytes(self.array()?))
     }
 
+    fn i64(&mut self) -> Option<i64> {
+        Some(i64::from_le_bytes(self.array()?))
+    }
+
     fn bytes(&mut self, length: usize) -> Option<Vec<u8>> {
         let end = self.position.checked_add(length)?;
         let result = self.bytes.get(self.position..end)?.to_vec();
@@ -82,7 +86,8 @@ fn parse_bundle(bytes: &[u8]) -> Result<Bundle<Authorized, i64>, Status> {
         reader.array().ok_or(Status::Malformed)?,
     ))
     .ok_or(Status::Malformed)?;
-    let value_balance = i64::try_from(reader.u64().ok_or(Status::Malformed)?)
+    let value_balance = reader.i64().ok_or(Status::Malformed)?;
+    let _fee = i64::try_from(reader.u64().ok_or(Status::Malformed)?)
         .map_err(|_| Status::InvalidBalance)?;
     let action_count = reader.u32().ok_or(Status::Malformed)? as usize;
     if action_count == 0 || action_count > MAX_ACTIONS {
@@ -253,14 +258,43 @@ mod tests {
     #[test]
     fn malformed_input_fails_closed() {
         assert_eq!(verify(&[], &[0; 32]) as i32, Status::Malformed as i32);
-        assert_eq!(verify(b"ONP1", &[0; 32]) as i32, Status::Malformed as i32);
+        assert_eq!(verify(b"ONP2", &[0; 32]) as i32, Status::Malformed as i32);
         assert_eq!(calculate_root(&[0; 31], 1).unwrap_err() as i32,
                    Status::Malformed as i32);
         assert!(calculate_root(&[], 0).is_ok());
     }
 
+    fn encode_authorized_bundle(bundle: &Bundle<Authorized, i64>, fee: u64) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        encoded.extend_from_slice(MAGIC);
+        encoded.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        encoded.extend_from_slice(&PROOF_VERSION.to_le_bytes());
+        encoded.push(ENABLED_FLAGS);
+        encoded.extend_from_slice(&bundle.anchor().to_bytes());
+        encoded.extend_from_slice(&bundle.value_balance().to_le_bytes());
+        encoded.extend_from_slice(&fee.to_le_bytes());
+        encoded.extend_from_slice(&(bundle.actions().len() as u32).to_le_bytes());
+        for action in bundle.actions().iter() {
+            encoded.extend_from_slice(&action.cv_net().to_bytes());
+            encoded.extend_from_slice(&action.nullifier().to_bytes());
+            encoded.extend_from_slice(&<[u8; 32]>::from(action.rk()));
+            encoded.extend_from_slice(&action.cmx().to_bytes());
+            encoded.extend_from_slice(&action.encrypted_note().epk_bytes);
+            encoded.extend_from_slice(&action.encrypted_note().enc_ciphertext);
+            encoded.extend_from_slice(&action.encrypted_note().out_ciphertext);
+            encoded.extend_from_slice(&<[u8; 64]>::from(action.authorization()));
+        }
+        let proof = bundle.authorization().proof().as_ref();
+        encoded.extend_from_slice(&(proof.len() as u32).to_le_bytes());
+        encoded.extend_from_slice(proof);
+        encoded.extend_from_slice(&<[u8; 64]>::from(
+            bundle.authorization().binding_signature(),
+        ));
+        encoded
+    }
+
     #[test]
-    fn verifies_real_orchard_proof_and_signatures() {
+    fn parses_and_verifies_real_onuros_wire_bundle() {
         let mut rng = OsRng;
         let version = BundleVersion::orchard_v2();
         let sk = Option::<SpendingKey>::from(SpendingKey::from_bytes([0; 32]))
@@ -289,7 +323,10 @@ mod tests {
             .prepare(&mut rng, [0; 32])
             .finalize()
             .expect("signatures finalize");
-        assert_eq!(verify_bundle(&bundle, &[0; 32]) as i32,
+        let encoded = encode_authorized_bundle(&bundle, 7);
+        assert_eq!(verify(&encoded, &[0; 32]) as i32,
                    Status::Verified as i32);
+        let parsed = parse_bundle(&encoded).expect("ONP2 round trip parses");
+        assert_eq!(*parsed.value_balance(), -5_000);
     }
 }

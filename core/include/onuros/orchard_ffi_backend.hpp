@@ -49,12 +49,12 @@ public:
 
     VerifiedPrivateEffects verify(
             const PrivateTransactionBundle& bundle,
-            const Hash256& transaction_id_value) const override {
+            const Hash256& signature_digest) const override {
         if (verify_ == nullptr)
             return {PrivateProofError::backend_unavailable, {}, {}, {}, 0};
         const auto encoded = encode_private_bundle(bundle);
         const auto status = static_cast<OrchardFfiStatus>(verify_(
-            encoded.data(), encoded.size(), transaction_id_value.data()));
+            encoded.data(), encoded.size(), signature_digest.data()));
         PrivateProofError error = PrivateProofError::invalid_proof;
         switch (status) {
         case OrchardFfiStatus::verified:

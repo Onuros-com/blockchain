@@ -35,6 +35,7 @@ PrivateActionBundle action(std::uint8_t seed) {
 PrivateTransactionBundle bundle() {
     PrivateTransactionBundle result;
     result.anchor = value(10U);
+    result.value_balance = -5'000;
     result.fee = 7;
     result.actions = {action(20U), action(40U)};
     result.proof.resize(orchard_proof_base_size +
@@ -66,7 +67,7 @@ void write_u32(std::vector<std::uint8_t>& body, std::size_t offset,
 }
 
 std::size_t proof_size_offset(const PrivateTransactionBundle& candidate) {
-    std::size_t offset = 57U;
+    std::size_t offset = 65U;
     for (const auto& item : candidate.actions)
         offset += 160U + item.encrypted_note.size() +
                   item.outgoing_ciphertext.size() + 64U;
@@ -76,15 +77,15 @@ std::size_t proof_size_offset(const PrivateTransactionBundle& candidate) {
 class ScriptedBackend final : public PrivateProofBackend {
 public:
     mutable std::size_t calls = 0U;
-    mutable Hash256 observed_transaction_id{};
+    mutable Hash256 observed_signature_digest{};
     PrivateProofError failure = PrivateProofError::none;
     bool mismatch = false;
 
     VerifiedPrivateEffects verify(
             const PrivateTransactionBundle& candidate,
-            const Hash256& transaction_id_value) const override {
+            const Hash256& signature_digest) const override {
         ++calls;
-        observed_transaction_id = transaction_id_value;
+        observed_signature_digest = signature_digest;
         std::vector<Hash256> nullifiers;
         std::vector<Hash256> commitments;
         for (const auto& item : candidate.actions) {
@@ -107,6 +108,7 @@ int main() {
     check(decoded.bundle->format_version == original.format_version);
     check(decoded.bundle->proof_system_version == original.proof_system_version);
     check(decoded.bundle->anchor == original.anchor);
+    check(decoded.bundle->value_balance == original.value_balance);
     check(decoded.bundle->fee == original.fee);
     check(decoded.bundle->actions.size() == original.actions.size());
     check(decoded.bundle->actions[0].nullifier == original.actions[0].nullifier);
@@ -142,15 +144,15 @@ int main() {
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::invalid_flags);
     malformed = transaction;
-    malformed.body[52U] = 0x80U;
+    malformed.body[60U] = 0x80U;
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::invalid_fee);
     malformed = transaction;
-    write_u32(malformed.body, 53U, 0U);
+    write_u32(malformed.body, 61U, 0U);
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::zero_actions);
     malformed = transaction;
-    write_u32(malformed.body, 53U, limits().max_actions + 1U);
+    write_u32(malformed.body, 61U, limits().max_actions + 1U);
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::too_many_actions);
     malformed = transaction;
@@ -189,8 +191,24 @@ int main() {
     auto effects = verifier.verify(transaction);
     check(effects.error == PrivateProofError::none);
     check(backend.calls == 1U);
-    check(backend.observed_transaction_id == transaction_id(transaction));
+    check(backend.observed_signature_digest ==
+          private_signature_digest(original));
+    check(backend.observed_signature_digest != transaction_id(transaction));
     check(effects.nullifiers.size() == original.actions.size());
+
+    auto changed_fee = original;
+    ++changed_fee.fee;
+    check(private_signature_digest(changed_fee) !=
+          private_signature_digest(original));
+    auto changed_proof = original;
+    changed_proof.proof[0] ^= 1U;
+    check(private_signature_digest(changed_proof) !=
+          private_signature_digest(original));
+    auto changed_signatures = original;
+    changed_signatures.actions[0].spend_authorization[0] ^= 1U;
+    changed_signatures.binding_signature[0] ^= 1U;
+    check(private_signature_digest(changed_signatures) ==
+          private_signature_digest(original));
 
     verifier.verify(malformed);
     check(backend.calls == 1U);
