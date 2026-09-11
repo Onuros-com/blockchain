@@ -83,6 +83,11 @@ the user's machine; it is not yet a GPU or private-TPS result.
 - `onuros_private_tps_benchmark` measures only the C++ admission/mempool path and
   labels its result as non-Orchard TPS. It cannot be used as the published
   private-TPS result.
+- `scripts/run-private-tps.sh` launches synchronized independent processes that
+  verify genuine pinned-Orchard Halo2 proofs and reports aggregate sustained
+  verification TPS. Proof construction and warm-up happen before the timed
+  interval. Run it as `./scripts/run-private-tps.sh WORKERS ITERATIONS` on the
+  published benchmark machine.
 
 ## Validation still required before the Stage 6 completion claim
 

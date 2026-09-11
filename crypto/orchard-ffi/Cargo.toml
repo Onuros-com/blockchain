@@ -7,13 +7,13 @@ license-file = "../../LICENSE"
 publish = false
 
 [lib]
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
 incrementalmerkletree = "0.8.2"
 nonempty = "0.11"
 orchard = { git = "https://github.com/zcash/orchard.git", rev = "f2be3a479837df6583110fd44e124d155ec592ee", features = ["test-dependencies"] }
+rand = "0.8"
 
 [dev-dependencies]
 proptest = "1.6"
-rand = "0.8"
