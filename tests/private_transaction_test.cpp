@@ -26,8 +26,8 @@ PrivateActionBundle action(std::uint8_t seed) {
     result.randomized_key = value(static_cast<std::uint8_t>(seed + 2U));
     result.note_commitment = value(static_cast<std::uint8_t>(seed + 3U));
     result.ephemeral_key = value(static_cast<std::uint8_t>(seed + 4U));
-    result.encrypted_note = {seed, static_cast<std::uint8_t>(seed + 5U)};
-    result.outgoing_ciphertext = {static_cast<std::uint8_t>(seed + 6U)};
+    result.encrypted_note.fill(seed);
+    result.outgoing_ciphertext.fill(static_cast<std::uint8_t>(seed + 6U));
     result.spend_authorization.back() = static_cast<std::uint8_t>(seed + 7U);
     return result;
 }
@@ -37,13 +37,14 @@ PrivateTransactionBundle bundle() {
     result.anchor = value(10U);
     result.fee = 7;
     result.actions = {action(20U), action(40U)};
-    result.proof = {50U, 51U, 52U};
+    result.proof.resize(orchard_proof_base_size +
+                        2U * orchard_proof_per_action_size, 50U);
     result.binding_signature.back() = 60U;
     return result;
 }
 
 PrivateBundleLimits limits() {
-    return {4096U, 4U, 64U, 64U, 256U};
+    return {20'000U, 4U, 20'000U};
 }
 
 template <typename Operation>
@@ -65,11 +66,10 @@ void write_u32(std::vector<std::uint8_t>& body, std::size_t offset,
 }
 
 std::size_t proof_size_offset(const PrivateTransactionBundle& candidate) {
-    std::size_t offset = 56U;
-    for (const auto& item : candidate.actions) {
-        offset += 160U + 4U + item.encrypted_note.size() + 4U +
+    std::size_t offset = 57U;
+    for (const auto& item : candidate.actions)
+        offset += 160U + item.encrypted_note.size() +
                   item.outgoing_ciphertext.size() + 64U;
-    }
     return offset;
 }
 
@@ -138,21 +138,21 @@ int main() {
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::unsupported_proof_version);
     malformed = transaction;
-    malformed.body[51U] = 0x80U;
+    malformed.body[12U] = 0U;
+    check(decode_private_transaction(malformed, limits()).error ==
+          PrivateBundleDecodeError::invalid_flags);
+    malformed = transaction;
+    malformed.body[52U] = 0x80U;
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::invalid_fee);
     malformed = transaction;
-    write_u32(malformed.body, 52U, 0U);
+    write_u32(malformed.body, 53U, 0U);
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::zero_actions);
     malformed = transaction;
-    write_u32(malformed.body, 52U, limits().max_actions + 1U);
+    write_u32(malformed.body, 53U, limits().max_actions + 1U);
     check(decode_private_transaction(malformed, limits()).error ==
           PrivateBundleDecodeError::too_many_actions);
-    malformed = transaction;
-    write_u32(malformed.body, 216U, 0U);
-    check(decode_private_transaction(malformed, limits()).error ==
-          PrivateBundleDecodeError::empty_ciphertext);
     malformed = transaction;
     write_u32(malformed.body, proof_size_offset(original), 0U);
     check(decode_private_transaction(malformed, limits()).error ==
@@ -163,11 +163,7 @@ int main() {
     check(decode_private_transaction(transaction, small).error ==
           PrivateBundleDecodeError::body_too_large);
     small = limits();
-    small.max_encrypted_note_bytes = 1U;
-    check(decode_private_transaction(transaction, small).error ==
-          PrivateBundleDecodeError::ciphertext_too_large);
-    small = limits();
-    small.max_proof_bytes = 2U;
+    small.max_proof_bytes = static_cast<std::uint32_t>(original.proof.size() - 1U);
     check(decode_private_transaction(transaction, small).error ==
           PrivateBundleDecodeError::proof_too_large);
     auto wrong_envelope = transaction;
@@ -185,7 +181,7 @@ int main() {
     invalid.proof.clear();
     throws_invalid_argument([&invalid] { encode_private_bundle(invalid); });
     invalid = original;
-    invalid.actions[0].encrypted_note.clear();
+    invalid.flags = 0U;
     throws_invalid_argument([&invalid] { encode_private_bundle(invalid); });
 
     ScriptedBackend backend;

@@ -16,12 +16,15 @@ namespace onuros {
 inline constexpr std::uint32_t private_transaction_envelope_version = 2U;
 inline constexpr std::uint32_t private_bundle_format_version = 1U;
 inline constexpr std::uint32_t orchard_proof_system_version = 1U;
+inline constexpr std::uint8_t orchard_enabled_flags = 0x03U;
+inline constexpr std::size_t orchard_encrypted_note_size = 580U;
+inline constexpr std::size_t orchard_outgoing_ciphertext_size = 80U;
+inline constexpr std::size_t orchard_proof_base_size = 2720U;
+inline constexpr std::size_t orchard_proof_per_action_size = 2272U;
 
 struct PrivateBundleLimits {
     std::size_t max_body_bytes;
     std::uint32_t max_actions;
-    std::uint32_t max_encrypted_note_bytes;
-    std::uint32_t max_outgoing_ciphertext_bytes;
     std::uint32_t max_proof_bytes;
 };
 
@@ -31,14 +34,16 @@ struct PrivateActionBundle {
     Hash256 randomized_key{};
     Hash256 note_commitment{};
     Hash256 ephemeral_key{};
-    std::vector<std::uint8_t> encrypted_note;
-    std::vector<std::uint8_t> outgoing_ciphertext;
+    std::array<std::uint8_t, orchard_encrypted_note_size> encrypted_note{};
+    std::array<std::uint8_t, orchard_outgoing_ciphertext_size>
+        outgoing_ciphertext{};
     std::array<std::uint8_t, 64> spend_authorization{};
 };
 
 struct PrivateTransactionBundle {
     std::uint32_t format_version = private_bundle_format_version;
     std::uint32_t proof_system_version = orchard_proof_system_version;
+    std::uint8_t flags = orchard_enabled_flags;
     Hash256 anchor{};
     Amount fee = 0;
     std::vector<PrivateActionBundle> actions;
@@ -53,12 +58,12 @@ enum class PrivateBundleDecodeError {
     invalid_magic,
     unsupported_format_version,
     unsupported_proof_version,
+    invalid_flags,
     invalid_fee,
     zero_actions,
     too_many_actions,
-    ciphertext_too_large,
-    empty_ciphertext,
     proof_too_large,
+    non_canonical_proof_size,
     empty_proof,
     truncated,
     trailing_bytes
@@ -145,17 +150,16 @@ public:
     }
 };
 
-inline PrivateBundleDecodeError read_sized_bytes(
+inline PrivateBundleDecodeError read_sized_proof(
         Reader& reader, std::uint32_t maximum,
-        std::vector<std::uint8_t>& output, bool proof) {
+        std::size_t expected_size, std::vector<std::uint8_t>& output) {
     std::uint32_t size = 0U;
     if (!reader.read_little(size)) return PrivateBundleDecodeError::truncated;
     if (size == 0U)
-        return proof ? PrivateBundleDecodeError::empty_proof
-                     : PrivateBundleDecodeError::empty_ciphertext;
-    if (size > maximum)
-        return proof ? PrivateBundleDecodeError::proof_too_large
-                     : PrivateBundleDecodeError::ciphertext_too_large;
+        return PrivateBundleDecodeError::empty_proof;
+    if (size > maximum) return PrivateBundleDecodeError::proof_too_large;
+    if (size != expected_size)
+        return PrivateBundleDecodeError::non_canonical_proof_size;
     if (!reader.read_bytes(size, output))
         return PrivateBundleDecodeError::truncated;
     return PrivateBundleDecodeError::none;
@@ -169,6 +173,8 @@ inline std::vector<std::uint8_t> encode_private_bundle(
         throw std::invalid_argument("unsupported private bundle format");
     if (bundle.proof_system_version != orchard_proof_system_version)
         throw std::invalid_argument("unsupported private proof version");
+    if (bundle.flags != orchard_enabled_flags)
+        throw std::invalid_argument("unsupported private bundle flags");
     if (bundle.fee < 0)
         throw std::invalid_argument("negative private transaction fee");
     if (bundle.actions.empty())
@@ -177,27 +183,34 @@ inline std::vector<std::uint8_t> encode_private_bundle(
         throw std::length_error("too many private actions");
     if (bundle.proof.empty())
         throw std::invalid_argument("private transaction has no proof");
+    if (bundle.actions.size() >
+            (std::numeric_limits<std::size_t>::max() -
+             orchard_proof_base_size) /
+                orchard_proof_per_action_size ||
+        bundle.proof.size() !=
+            orchard_proof_base_size + orchard_proof_per_action_size *
+                                          bundle.actions.size())
+        throw std::invalid_argument("non-canonical Orchard proof size");
 
     std::vector<std::uint8_t> output;
     output.insert(output.end(), private_detail::bundle_magic.begin(),
                   private_detail::bundle_magic.end());
     private_detail::append_little(output, bundle.format_version);
     private_detail::append_little(output, bundle.proof_system_version);
+    output.push_back(bundle.flags);
     private_detail::append_hash(output, bundle.anchor);
     private_detail::append_little(
         output, static_cast<std::uint64_t>(bundle.fee));
     private_detail::append_little(
         output, static_cast<std::uint32_t>(bundle.actions.size()));
     for (const auto& action : bundle.actions) {
-        if (action.encrypted_note.empty() || action.outgoing_ciphertext.empty())
-            throw std::invalid_argument("private ciphertext is empty");
         private_detail::append_hash(output, action.value_commitment);
         private_detail::append_hash(output, action.nullifier);
         private_detail::append_hash(output, action.randomized_key);
         private_detail::append_hash(output, action.note_commitment);
         private_detail::append_hash(output, action.ephemeral_key);
-        private_detail::append_sized(output, action.encrypted_note);
-        private_detail::append_sized(output, action.outgoing_ciphertext);
+        private_detail::append_array(output, action.encrypted_note);
+        private_detail::append_array(output, action.outgoing_ciphertext);
         private_detail::append_array(output, action.spend_authorization);
     }
     private_detail::append_sized(output, bundle.proof);
@@ -235,6 +248,10 @@ inline PrivateBundleDecodeResult decode_private_transaction(
         return {Error::truncated, std::nullopt};
     if (bundle.proof_system_version != orchard_proof_system_version)
         return {Error::unsupported_proof_version, std::nullopt};
+    if (!reader.read_little(bundle.flags))
+        return {Error::truncated, std::nullopt};
+    if (bundle.flags != orchard_enabled_flags)
+        return {Error::invalid_flags, std::nullopt};
     if (!reader.read_hash(bundle.anchor))
         return {Error::truncated, std::nullopt};
 
@@ -252,7 +269,9 @@ inline PrivateBundleDecodeResult decode_private_transaction(
     if (action_count == 0U) return {Error::zero_actions, std::nullopt};
     if (action_count > limits.max_actions)
         return {Error::too_many_actions, std::nullopt};
-    constexpr std::size_t minimum_action_bytes = 232U;
+    constexpr std::size_t minimum_action_bytes =
+        160U + orchard_encrypted_note_size +
+        orchard_outgoing_ciphertext_size + 64U;
     if (action_count > reader.remaining() / minimum_action_bytes)
         return {Error::truncated, std::nullopt};
 
@@ -265,21 +284,23 @@ inline PrivateBundleDecodeResult decode_private_transaction(
             !reader.read_hash(action.note_commitment) ||
             !reader.read_hash(action.ephemeral_key))
             return {Error::truncated, std::nullopt};
-        auto error = private_detail::read_sized_bytes(
-            reader, limits.max_encrypted_note_bytes,
-            action.encrypted_note, false);
-        if (error != Error::none) return {error, std::nullopt};
-        error = private_detail::read_sized_bytes(
-            reader, limits.max_outgoing_ciphertext_bytes,
-            action.outgoing_ciphertext, false);
-        if (error != Error::none) return {error, std::nullopt};
+        if (!reader.read_array(action.encrypted_note) ||
+            !reader.read_array(action.outgoing_ciphertext))
+            return {Error::truncated, std::nullopt};
         if (!reader.read_array(action.spend_authorization))
             return {Error::truncated, std::nullopt};
         bundle.actions.push_back(std::move(action));
     }
 
-    auto error = private_detail::read_sized_bytes(
-        reader, limits.max_proof_bytes, bundle.proof, true);
+    if (action_count >
+        (std::numeric_limits<std::size_t>::max() -
+         orchard_proof_base_size) /
+            orchard_proof_per_action_size)
+        return {Error::proof_too_large, std::nullopt};
+    const auto expected_proof_size =
+        orchard_proof_base_size + orchard_proof_per_action_size * action_count;
+    auto error = private_detail::read_sized_proof(
+        reader, limits.max_proof_bytes, expected_proof_size, bundle.proof);
     if (error != Error::none) return {error, std::nullopt};
     if (!reader.read_array(bundle.binding_signature))
         return {Error::truncated, std::nullopt};

@@ -7,7 +7,7 @@ add_library(onuros_core INTERFACE)
 target_include_directories(onuros_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_compile_features(onuros_core INTERFACE cxx_std_17)
 
-set(ONUROS_TESTS economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test)
+set(ONUROS_TESTS economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test orchard_ffi_backend_test)
 foreach(target ${ONUROS_TESTS})
   add_executable(${target} tests/${target}.cpp)
   target_link_libraries(${target} PRIVATE onuros_core)

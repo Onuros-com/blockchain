@@ -1,0 +1,31 @@
+name: Orchard verification bridge
+
+on:
+  push:
+    branches: [private-transactions]
+    paths:
+      - "crypto/orchard-ffi/**"
+      - ".github/workflows/orchard-ffi.yml"
+  pull_request:
+    paths:
+      - "crypto/orchard-ffi/**"
+      - ".github/workflows/orchard-ffi.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rust-bridge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Test pinned Orchard bridge
+        run: cargo test --manifest-path crypto/orchard-ffi/Cargo.toml
+      - name: Build release bridge
+        run: cargo build --manifest-path crypto/orchard-ffi/Cargo.toml --release
+      - name: Preserve dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchard-cargo-lock
+          path: crypto/orchard-ffi/Cargo.lock
