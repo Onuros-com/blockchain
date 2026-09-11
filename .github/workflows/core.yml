@@ -2,9 +2,10 @@ name: Local blockchain core
 
 on:
   push:
-    branches: [local-blockchain, private-transactions]
+    branches: [main, local-blockchain, private-transactions]
   pull_request:
     paths:
+      - "apps/**"
       - "core/**"
       - "tests/**"
       - "CMakeLists.txt"
