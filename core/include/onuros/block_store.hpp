@@ -82,7 +82,7 @@ inline bool take_u64(const std::vector<std::uint8_t>& input, std::size_t& offset
 
 inline bool sync_file(const std::filesystem::path& path) {
 #ifdef _WIN32
-    const auto handle = CreateFileW(path.c_str(), GENERIC_READ,
+    const auto handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE,
         FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE) return false;
