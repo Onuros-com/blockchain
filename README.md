@@ -1,8 +1,10 @@
 # Onuros Local Blockchain Core
 
-This repository contains the C++17 implementation of the Onuros local blockchain
-core. `main` is the stable Stage 5 baseline, `local-blockchain` is its
-maintenance branch, and `private-transactions` contains active Stage 6 work.
+This repository contains the C++17 implementation of the Onuros local blockchain core.
+
+Stages 5 and 6 are completed development milestones. Stage 5 was developed on
+`local-blockchain`; Stage 6 was developed on `private-transactions`. New Stage 7
+work should use focused branches created from the protected `main` checkpoint.
 
 Confirmed economics:
 
@@ -14,21 +16,30 @@ Confirmed economics:
 - 60-block reward maturity
 - No premine
 
-Stage 5 prototype checkpoints are complete. The core includes canonical block and
-transaction encoding, bounded decoding, contextual validation, exact compact-target
-and chain-work arithmetic, 60-block difficulty adjustment, median-time rules, a
-checksummed append-only database with torn-write recovery, strongest-chain selection,
-atomic reorganization state, and an integrated local validation/mining/restart pipeline.
+Stage 5 includes canonical block and transaction encoding, bounded decoding,
+contextual validation, exact compact-target and chain-work arithmetic, 60-block
+difficulty adjustment, median-time rules, a checksummed append-only database
+with torn-write recovery, strongest-chain selection, atomic reorganization
+state, and an integrated local validation/mining/restart pipeline.
+
+Stage 6 adds the mandatory private-transaction body, pinned Orchard verification
+boundary, shielded state commitment and persistence, private reward binding,
+bounded mempool, and a real Orchard end-to-end node pipeline. On a published
+Ryzen 5 3600 / WSL2 baseline, four verification workers sustained an average of
+153.140 real Orchard verifications per second across three 4,000-transaction
+runs. This is cryptographic verification throughput—not yet multi-node network
+TPS or end-user confirmation throughput.
 
 Run `make test` or use CMake/CTest. Build the runnable local node with `make node`,
 then follow [the WSL local-node guide](docs/local-node-run.md). Linux, Windows and
 sanitizer builds run in GitHub Actions.
 
-The local miner uses an injected proof-of-work hash so consensus behavior can be tested
-deterministically. Stage 4's KawPoW implementation still needs final AMD hardware
-evidence and later testnet wiring. Stage 6 private-transaction work is in progress.
-The first performance goal remains 100 sustained private TPS across multiple nodes
-on published hardware; it is a target, not a current claim.
+Read the [Stage 6 completion report](docs/stage-6-completion-report.md),
+[Stage 6 threat model](docs/stage-6-threat-model.md), and
+[Stage 7 networking specification](docs/stage-7-networking-spec.md). Stage 4's
+remaining hardware evidence is tracked separately in the
+[deferred validation record](docs/stage-4-deferred-validation.md); it does not
+turn the deterministic local proof-of-work engine into production KawPoW.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and report
-vulnerabilities according to [SECURITY.md](SECURITY.md).
+This remains pre-mainnet software. Passing tests and measured throughput do not
+constitute a security audit or readiness for real funds.

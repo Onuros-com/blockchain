@@ -165,7 +165,8 @@ inline bool append_synced(const std::filesystem::path& destination,
 class PersistentBlockStore {
     static constexpr std::array<std::uint8_t, 8> magic_ =
         {'O', 'N', 'U', 'R', 'D', 'B', '0', '2'};
-    static constexpr std::size_t minimum_record_payload_ = 4U + 132U + 32U;
+    static constexpr std::size_t minimum_record_payload_ =
+        4U + block_prefix_encoded_size + 32U;
 
     std::filesystem::path path_;
     DecodeLimits decode_limits_;

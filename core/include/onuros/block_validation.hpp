@@ -49,7 +49,7 @@ BlockValidationError validate_block(const Block& block,
         return BlockValidationError::unsupported_block_version;
     if (block.transactions.size() > limits.max_transactions)
         return BlockValidationError::too_many_transactions;
-    std::size_t encoded_size = 132U;
+    std::size_t encoded_size = block_prefix_encoded_size;
     if (encoded_size > limits.max_block_bytes)
         return BlockValidationError::block_too_large;
     for (const auto& transaction : block.transactions) {
