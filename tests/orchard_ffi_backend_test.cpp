@@ -51,7 +51,7 @@ int main() {
     const auto envelope = make_private_transaction(candidate);
     const auto id = transaction_id(envelope);
 
-    OrchardFfiBackend unavailable;
+    OrchardFfiBackend unavailable(nullptr);
     check(unavailable.verify(candidate, id).error ==
           PrivateProofError::backend_unavailable);
 
@@ -82,7 +82,7 @@ int main() {
     status_to_return = 99;
     check(backend.verify(candidate, id).error == PrivateProofError::invalid_proof);
 
-    OrchardFfiRootCalculator unavailable_root;
+    OrchardFfiRootCalculator unavailable_root(nullptr);
     check(!unavailable_root.calculate({}, {}).has_value());
     OrchardFfiRootCalculator root(scripted_root);
     status_to_return = 0;
@@ -94,5 +94,9 @@ int main() {
     check(empty.has_value() && *empty == Hash256{});
     status_to_return = static_cast<int>(OrchardFfiStatus::malformed);
     check(!root.calculate({candidate.anchor}, {}).has_value());
+#ifdef ONUROS_ORCHARD_FFI_ENABLED
+    OrchardFfiRootCalculator linked_root;
+    check(linked_root.calculate({}, {}).has_value());
+#endif
     return 0;
 }
