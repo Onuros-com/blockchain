@@ -89,6 +89,22 @@ the user's machine; it is not yet a GPU or private-TPS result.
   per-process warm-up also happens before the synchronized timed interval. Run
   it as `./scripts/run-private-tps.sh WORKERS ITERATIONS` on the published
   benchmark machine.
+- The Orchard verifying key is initialized once per process with `OnceLock` and
+  then reused immutably. This removes deterministic key construction from the
+  per-transaction hot path while retaining fail-closed panic handling at the
+  FFI boundary.
+
+## Performance baseline
+
+The first WSL hardware run successfully verified every real Orchard proof:
+
+- one worker, five verifications: 0.795 aggregate TPS;
+- four workers, 400 verifications: 2.137 aggregate TPS in 187.217 seconds.
+
+Those measurements were taken before verifying-key caching and establish the
+optimization baseline. They demonstrate correct concurrent verification, but
+do not satisfy the 100 sustained private-TPS target. A post-cache run on the
+same machine is required for an apples-to-apples comparison.
 
 ## Validation still required before the Stage 6 completion claim
 

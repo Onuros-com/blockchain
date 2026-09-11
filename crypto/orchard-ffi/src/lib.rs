@@ -9,13 +9,24 @@ use orchard::{
     value::ValueCommitment,
     Action, Anchor, Bundle, Proof,
 };
-use std::{panic::catch_unwind, slice};
+use std::{panic::catch_unwind, slice, sync::OnceLock};
 
 const MAGIC: &[u8; 4] = b"ONP2";
 const FORMAT_VERSION: u32 = 2;
 const PROOF_VERSION: u32 = 1;
 const ENABLED_FLAGS: u8 = 3;
 const MAX_ACTIONS: usize = 6_000;
+
+// Building Orchard's verifying key is deterministic but expensive. Keep one
+// immutable key per process so normal transaction admission pays this cost only
+// once. VerifyingKey is safe to share because proof verification only borrows it.
+static VERIFYING_KEY: OnceLock<VerifyingKey> = OnceLock::new();
+
+fn verifying_key() -> &'static VerifyingKey {
+    VERIFYING_KEY.get_or_init(|| {
+        VerifyingKey::build(OrchardCircuitVersion::FixedPostNu6_2)
+    })
+}
 
 #[derive(Debug)]
 #[repr(i32)]
@@ -150,8 +161,7 @@ fn parse_bundle(bytes: &[u8]) -> Result<Bundle<Authorized, i64>, Status> {
 }
 
 fn verify_bundle(bundle: &Bundle<Authorized, i64>, sighash: &[u8; 32]) -> Status {
-    let verifying_key = VerifyingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
-    if bundle.verify_proof(&verifying_key).is_err() {
+    if bundle.verify_proof(verifying_key()).is_err() {
         return Status::InvalidProof;
     }
     for action in bundle.actions().iter() {
@@ -262,6 +272,13 @@ mod tests {
         assert_eq!(calculate_root(&[0; 31], 1).unwrap_err() as i32,
                    Status::Malformed as i32);
         assert!(calculate_root(&[], 0).is_ok());
+    }
+
+    #[test]
+    fn verification_key_is_cached_for_the_process_lifetime() {
+        let first = verifying_key();
+        let second = verifying_key();
+        assert!(std::ptr::eq(first, second));
     }
 
     fn encode_authorized_bundle(bundle: &Bundle<Authorized, i64>, fee: u64) -> Vec<u8> {
