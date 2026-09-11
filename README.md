@@ -20,8 +20,9 @@ and chain-work arithmetic, 60-block difficulty adjustment, median-time rules, a
 checksummed append-only database with torn-write recovery, strongest-chain selection,
 atomic reorganization state, and an integrated local validation/mining/restart pipeline.
 
-Run `make test` or use CMake/CTest. Linux, Windows and sanitizer builds run in GitHub
-Actions.
+Run `make test` or use CMake/CTest. Build the runnable local node with `make node`,
+then follow [the WSL local-node guide](docs/local-node-run.md). Linux, Windows and
+sanitizer builds run in GitHub Actions.
 
 The local miner uses an injected proof-of-work hash so consensus behavior can be tested
 deterministically. Stage 4's KawPoW implementation still needs its final AMD hardware

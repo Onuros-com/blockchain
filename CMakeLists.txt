@@ -7,9 +7,16 @@ add_library(onuros_core INTERFACE)
 target_include_directories(onuros_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_compile_features(onuros_core INTERFACE cxx_std_17)
 
-foreach(target economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test)
+set(ONUROS_TESTS economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test)
+foreach(target ${ONUROS_TESTS})
   add_executable(${target} tests/${target}.cpp)
   target_link_libraries(${target} PRIVATE onuros_core)
+endforeach()
+
+add_executable(onuros_local_node apps/local_node_main.cpp)
+target_link_libraries(onuros_local_node PRIVATE onuros_core)
+
+foreach(target ${ONUROS_TESTS} onuros_local_node)
   set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
@@ -34,3 +41,5 @@ add_test(NAME difficulty COMMAND difficulty_test)
 add_test(NAME block_store COMMAND block_store_test)
 add_test(NAME active_chain COMMAND active_chain_test)
 add_test(NAME local_node COMMAND local_node_test)
+add_test(NAME local_node_cli COMMAND onuros_local_node
+         --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
