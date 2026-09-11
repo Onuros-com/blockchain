@@ -5,10 +5,20 @@ on:
     branches: [private-transactions]
     paths:
       - "crypto/orchard-ffi/**"
+      - "CMakeLists.txt"
+      - "core/include/onuros/orchard_ffi_backend.hpp"
+      - "core/include/onuros/private_block.hpp"
+      - "tests/orchard_ffi_backend_test.cpp"
+      - "tests/private_block_test.cpp"
       - ".github/workflows/orchard-ffi.yml"
   pull_request:
     paths:
       - "crypto/orchard-ffi/**"
+      - "CMakeLists.txt"
+      - "core/include/onuros/orchard_ffi_backend.hpp"
+      - "core/include/onuros/private_block.hpp"
+      - "tests/orchard_ffi_backend_test.cpp"
+      - "tests/private_block_test.cpp"
       - ".github/workflows/orchard-ffi.yml"
 
 permissions:
