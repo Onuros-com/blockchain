@@ -2,7 +2,7 @@
 
 This repository contains the C++17 implementation of the Onuros local blockchain core.
 
-Development branch: `local-blockchain`.
+Stage 5 branch: `local-blockchain`. Stage 6 branch: `private-transactions`.
 
 Confirmed economics:
 
@@ -26,6 +26,6 @@ sanitizer builds run in GitHub Actions.
 
 The local miner uses an injected proof-of-work hash so consensus behavior can be tested
 deterministically. Stage 4's KawPoW implementation still needs its final AMD hardware
-evidence and later testnet wiring. Stage 6 will define the mandatory private-transaction
-body and shielded state. The first performance goal remains 100 sustained private TPS
+evidence and later testnet wiring. Stage 6 is defining the mandatory private-transaction body and shielded state.
+See [the Stage 6 status](docs/stage-6-status.md). The first performance goal remains 100 sustained private TPS
 across multiple nodes on published hardware; it is a target, not a current claim.

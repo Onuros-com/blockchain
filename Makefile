@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
-TESTS = economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test
+TESTS = economics_test block_format_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test
 
 .PHONY: all node test sanitize clean
 
