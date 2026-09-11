@@ -119,13 +119,33 @@ count and available RAM still need to be captured alongside this result before
 the hardware evidence is considered fully published. End-to-end node TPS is a
 separate measurement and is not claimed by this verifier benchmark.
 
-## Validation still required before the Stage 6 completion claim
+The sustained follow-up captured the benchmark hardware and repeated the test
+three times:
 
-1. Green pinned-Orchard workflow, including the Rust proof/signature test and a
-   C++ build linked to the generated library.
-2. A reproducible multi-process benchmark using real Orchard verification on
-   published CPU/GPU hardware. The target remains 100 sustained private TPS;
-   admission-only or deterministic-PoW numbers do not satisfy it.
+- AMD Ryzen 5 3600, 6 cores / 12 logical CPUs;
+- 7.7 GiB WSL2 memory with 2.0 GiB swap;
+- Linux 6.6.114.1-microsoft-standard-WSL2;
+- four independent verifier processes, 1,000 verifications each per run;
+- 153.242, 153.085 and 153.094 aggregate TPS;
+- 153.140 mean aggregate TPS across 12,000 successful verifications.
+
+The run-to-run range was 0.157 TPS (about 0.1% of the mean). This satisfies the
+100 sustained real-Orchard private-verification TPS checkpoint on published
+hardware. The GPU was not used. Full mempool-to-block node throughput remains
+a separate completion measurement.
+
+## Stage 6 completion gates
+
+1. **Passed:** green pinned-Orchard workflow, including the Rust
+   proof/signature test and a C++ build linked to the generated library.
+2. **Passed:** reproducible multi-process benchmark using real Orchard
+   verification on published hardware, exceeding 100 sustained verification
+   TPS in three consecutive runs.
+3. **Remaining:** exercise the complete local-node path under private load and
+   adversarial inputs: mempool admission, deterministic block selection,
+   Orchard verification, shielded-root commitment, persistence/restart and
+   atomic reorganization. Record this separately as end-to-end node TPS; do not
+   substitute admission-only or deterministic-PoW numbers.
 
 The Stage 6 block-header/database encoding is intentionally incompatible with
 Stage 5 databases. Use a new data path when running this branch.
