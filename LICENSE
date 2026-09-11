@@ -1,0 +1,140 @@
+# Onuros Community Software License 1.0
+
+## Adoption notice
+
+The Onuros project maintainer, identified on GitHub as Onuros-com, approved this
+license for the project's original software. It applies to the original source,
+tests, build files and project documentation distributed with this notice, to the
+extent the relevant rights holder is authorized to grant these permissions.
+Separately identified third-party material retains its own license. This notice
+does not assign ownership or claim rights that a Licensor does not control.
+
+The archived review draft is historical; this root LICENSE is the adopted text.
+
+## 1. Covered material and parties
+
+“Covered Material” means source code, executable code, or documentation that an
+authorized rights holder expressly offers under this license. A “Licensor” is
+such a rights holder, and “You” is anyone exercising the permissions below.
+“Distribution” means providing a copy to another person or organization.
+
+Each Licensor grants rights only in material and rights that the Licensor is
+entitled to license. Separately identified third-party material is governed by
+its own terms, as explained in section 7. This license does not transfer ownership
+of the Covered Material or claim rights over material outside its scope.
+
+## 2. Permission to use and build
+
+Each Licensor gives You worldwide, nonexclusive copyright permission, without
+license charges, to run and reproduce the Covered Material; study and change it;
+combine it with other software; and distribute original or changed versions in
+source or executable form. You may charge for copies, hosting, support, services,
+or products that incorporate the Covered Material.
+
+These permissions expressly include operating nodes and wallets, mining,
+building applications, creating forks, and launching independent blockchains.
+They do not depend on participation in the Onuros network, payment to an Onuros
+fund, ownership of a token, or approval of an individual fork.
+
+You may give recipients additional permissions in changes that You own and choose
+terms for those changes. You may not withdraw or contradict the permissions this
+license gives recipients in the original Covered Material. This license imposes
+no obligation to publish Your private changes or supply source with an executable
+distribution, subject to the separate obligations described in section 7.
+
+## 3. Notices accompanying distribution
+
+When You distribute Covered Material or a substantial portion of it, include a
+copy of this license and retain the applicable copyright and attribution notices
+that came with that material. Notices concerning removed material need not be
+retained solely because that material appeared in an earlier version.
+
+For source distributions, include the notices with the source. For executable
+distributions, include them in accompanying documentation or another notice file
+provided with the executable. An additional prominent advertisement or payment
+is not required.
+
+For changed distributions, provide a clear statement that changes were made and
+identify the distributor responsible for that version. A complete change-by-change
+history is not required. Do not describe a modified version as an unmodified
+release supplied by an original Licensor.
+
+Every recipient receives permission to the original Covered Material directly
+from the relevant Licensors on these terms; recipients need no separate approval.
+
+## 4. Identity and independent networks
+
+This license supplies no trademark license for project names, logos, or service
+marks. It does not limit truthful attribution, identification of compatibility,
+or uses that applicable law permits without a trademark license.
+
+Do not falsely claim that a Licensor endorses, maintains, audits, or guarantees
+Your product or independent network. Permission to launch another blockchain
+does not make that blockchain an official Onuros network. This section does not
+restrict changes to consensus rules, economics, or application behavior in a fork.
+
+## 5. Duration, compliance and restoration
+
+Permissions continue for the duration of the applicable copyright and cannot be
+withdrawn merely because a Licensor changes preferences, stops maintaining the
+project, or publishes a later license version. They remain subject to compliance
+with this version's conditions.
+
+A material breach suspends the permissions needed for the noncompliant activity.
+If You remedy that breach within thirty days after first receiving written notice
+that reasonably identifies it, those permissions are restored automatically.
+For a breach not remedied within that period, restoration requires the affected
+Licensor's written permission. This provision does not erase responsibility for
+conduct during a period of noncompliance.
+
+A breach by one distributor does not remove the permissions of recipients who
+remain compliant. Sections concerning notices, ownership, liability, and separate
+third-party rights continue to apply where relevant after suspension.
+
+## 6. No promise of performance; liability limits
+
+The Covered Material is provided without a promise that it is correct, secure,
+private, suitable for a particular purpose, free of infringement, or continuously
+available. No Licensor is obliged by this license to provide support, maintenance,
+updates, audits, or recovery services. Any separate written service commitment
+must be assessed on its own terms.
+
+To the extent applicable law allows, each Licensor disclaims warranties and
+conditions concerning the Covered Material and is not liable for claims or losses
+arising from its use, modification, distribution, or inability to operate. This
+includes lost data, lost digital assets, lost revenue, and interruption of service,
+regardless of the legal theory asserted or prior notice of the possibility.
+
+Nothing here excludes liability or limits rights that applicable law does not
+allow the parties to exclude or limit. Running tests or obtaining an audit does
+not create a guarantee under this license.
+
+## 7. Third-party material and other rights
+
+This license does not replace licenses on third-party code, dependencies,
+documents, or assets. Identify such material and preserve its required notices.
+Where another license imposes source-disclosure, attribution, or other conditions,
+comply with those conditions independently. This license does not assert that
+any particular combination of software has compatible licensing terms.
+
+The permission granted here concerns copyright. No express patent license is
+included. The license gives no rights to someone else's private keys, accounts,
+tokens, data, or trademarks. It neither grants an exemption from applicable law
+nor restricts rights or exceptions that exist independently under that law.
+
+## 8. Contributions, versions and interpretation
+
+Submitting code, opening an issue, or controlling a repository does not by itself
+transfer copyright or make a person a Licensor of someone else's material. A
+contributor who expressly offers a contribution under this license grants these
+permissions for the rights that contributor controls. Any assignment of ownership
+requires a separate arrangement.
+
+The version identified in the notice applying this license governs that material.
+A later license version does not automatically replace it. Material may be offered
+under additional terms only by a person authorized to grant the relevant rights.
+
+If a provision cannot be enforced, the remaining provisions continue to apply to
+the extent permitted by applicable law. No exclusive court, arbitration process,
+or governing jurisdiction is selected by this text.
+
