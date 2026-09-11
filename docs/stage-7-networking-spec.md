@@ -1,0 +1,148 @@
+# Stage 7 specification: P2P networking and multi-node synchronization
+
+Status: approved design target; implementation has not started
+
+## Purpose
+
+Stage 7 turns the validated local private-chain components into multiple
+independent nodes that discover peers, synchronize the strongest valid chain,
+propagate private transactions and blocks, and remain consistent across restart
+and reorganization. Wallet UI, explorer and public testnet deployment are later
+milestones.
+
+## Non-negotiable safety rules
+
+- Peers are untrusted. No peer-provided boolean or metadata can bypass local
+  proof, signature, economics, proof-of-work or state validation.
+- Consensus data uses one canonical bounded encoding. Unknown versions and
+  trailing bytes fail closed.
+- Network parsing occurs before large allocation, decompression or expensive
+  cryptographic verification.
+- A node never adopts height alone; it selects the strongest fully validated
+  chain by cumulative work.
+- Private transaction contents must never be logged.
+- Test keys and deterministic fixtures are forbidden from production binaries.
+
+## Protocol layers
+
+1. **Transport:** asynchronous TCP for the first private test network. The
+   listening port is configurable; a permanent public default is chosen only
+   after checking registry and deployment conflicts. Authenticated encrypted
+   transport is required before a public testnet.
+2. **Framing:** network magic, protocol version, message type, payload length,
+   request identifier and checksum. Headers have a small fixed maximum.
+3. **Handshake:** chain identifier, genesis hash, protocol range, services,
+   node nonce, best height and cumulative work. A node rejects self-connections,
+   wrong chains, incompatible versions and duplicate peer sessions.
+4. **Synchronization:** headers first, then bounded block chunks. Every header,
+   proof-of-work transition and block is validated locally before activation.
+5. **Relay:** inventory announcements for transactions and blocks, bounded
+   get-data requests, duplicate suppression and deterministic local admission.
+
+## Required messages
+
+- `hello`, `hello_ack`, `disconnect`
+- `ping`, `pong`
+- `get_headers`, `headers`
+- `get_block`, `block_chunk`
+- `tx_inventory`, `get_transactions`, `transactions`
+- `block_inventory`
+
+Every message type receives explicit byte, item-count, nesting and time limits.
+Unknown message types are ignored or rejected according to negotiated protocol
+version; they never reach consensus code accidentally.
+
+## Large private blocks
+
+A two-action Stage 6 private transaction is roughly 9 KB. At 100 transactions
+per second and a 60-second block target, a full interval can approach 6,000
+transactions and approximately 55 MB before framing overhead. Stage 7 must not
+assume that a complete block fits safely in one small network message.
+
+- Blocks are transferred in independently bounded chunks.
+- Chunk order, total size, block identifier and final checksum are committed
+  before activation.
+- Validation streams from bounded storage rather than duplicating an entire
+  block in each peer buffer.
+- In-flight bytes, chunks and block requests are limited globally and per peer.
+- Initial testnet block limits are selected from measured propagation and
+  verification results, not from the 100 TPS aspiration alone.
+
+## Peer and denial-of-service controls
+
+- Maximum inbound/outbound peers and per-IP connection limits.
+- Handshake, idle and request timeouts.
+- Bounded send/receive queues with backpressure.
+- Rate limits for inventory, transactions, headers and expensive validation.
+- Misbehavior scoring for malformed frames, invalid proofs/blocks, unsolicited
+  bulk data and repeated timeouts.
+- Temporary bans with bounded persisted state; no consensus decision depends on
+  a peer identity or ban score.
+- Orphan and duplicate caches have strict count, byte and lifetime limits.
+
+## Concurrency model
+
+- Network I/O does no consensus mutation directly.
+- Parsed candidates enter bounded validation queues.
+- Orchard verification uses a reusable worker pool and the cached immutable
+  verifying key.
+- One ordered chain-state executor commits accepted blocks and reorganizations.
+- Cancellation and shutdown drain or discard work without partially committing
+  shielded state.
+
+## Synchronization and reorganization
+
+- Download competing headers and calculate cumulative work exactly.
+- Request blocks from more than one peer when practical, without accepting the
+  same work twice.
+- Stage a candidate branch, validate all transitions, then atomically replace
+  active block and shielded state.
+- After restart, reconcile the block database and shielded-state tip before
+  opening network admission.
+- Revalidate the private mempool after every activated tip change.
+
+## Privacy requirements
+
+- Handshakes and logs contain no wallet address, viewing key or transaction
+  ownership metadata.
+- Transaction relay timing can reveal origin; initial tests record this risk.
+  Randomized diffusion or stem/fluff relay is evaluated before public testnet.
+- No master viewing key is introduced by networking.
+- Metrics expose counts, sizes and latency, never private transaction contents.
+
+## Observability
+
+Expose local structured metrics for peer count, queue depth, header/block sync,
+bytes, validation latency, Orchard verification rate, block propagation,
+reorganizations and rejection categories. Metrics and logs must be safe to
+publish after removing IP addresses where appropriate.
+
+## Stage 7 test topology
+
+- First gate: three nodes as separate local processes with isolated databases
+  and ports.
+- Second gate: three independent machines or cloud instances in at least two
+  network locations.
+- Inject valid transactions through one node and require convergence at all
+  nodes.
+- Include slow, disconnecting, malformed and adversarial peers.
+
+## Completion gates
+
+1. Canonical framing and handshake tests pass on Linux and Windows.
+2. Three fresh nodes discover/connect and synchronize from genesis.
+3. Restarted and late-joining nodes reach the same tip and shielded root.
+4. Competing valid branches resolve identically by cumulative work.
+5. Malformed frames, oversized declarations, invalid proofs/blocks and flooding
+   cannot bypass limits or corrupt state under ASan/UBSan.
+6. At least 100 sustained valid private transactions per second are admitted
+   and relayed for ten minutes across three published nodes without divergence.
+7. Blocks at the selected testnet limit propagate and validate within the
+   documented latency budget; confirmation latency is reported separately.
+8. Clean shutdown/restart during synchronization preserves a recoverable state.
+9. Protocol, threat model, operator guide and raw benchmark evidence are
+   published.
+
+If Gate 6 or 7 fails, Stage 7 remains incomplete and measurements determine
+whether to optimize verification, block limits, relay or transaction design.
+

@@ -2,10 +2,10 @@
 
 ## Supported code
 
-Security fixes are developed against the current `main` branch and the active
-Stage 6 branch, `private-transactions`. This repository is pre-mainnet software:
-no release should be treated as audited or safe for real funds unless a release
-notice explicitly says otherwise.
+Security fixes are developed against the current protected `main` checkpoint
+and active Stage 7 development branches created from it. This repository is
+pre-mainnet software: no release should be treated as audited or safe for real
+funds unless a release notice explicitly says otherwise.
 
 ## Reporting a vulnerability
 

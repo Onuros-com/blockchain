@@ -7,14 +7,16 @@ reproducible performance evidence as core requirements.
 ## Workflow
 
 1. Open an issue before substantial consensus, cryptography or economic changes.
-2. Create a focused branch from the appropriate current branch.
+2. Create a focused branch from the protected current `main` checkpoint.
 3. Keep consensus rules explicit and fail closed.
 4. Add tests for successful behavior, rejection paths and boundary conditions.
 5. Run the complete local test suite.
 6. Open a pull request; do not push directly to `main`.
 
-For Stage 5 maintenance, use `local-blockchain`. Current Stage 6 private
-transaction work belongs on `private-transactions`.
+The historical `local-blockchain` and `private-transactions` branches preserve
+the Stage 5 and Stage 6 development lines. Stage 7 networking changes should be
+split into reviewable branches from `main`; do not continue new work directly on
+those milestone branches.
 
 ## Build and test
 
