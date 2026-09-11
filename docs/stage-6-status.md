@@ -24,14 +24,41 @@ in for proof verification. The production gate remains closed until a pinned,
 reviewed Orchard-compatible verifier parses the canonical bundle and returns
 authenticated effects.
 
+## Checkpoint 2
+
+The second checkpoint defines the consensus-facing private transaction container:
+
+- envelope version 2 carries an `ONP1` versioned private bundle;
+- every action canonically encodes its value commitment, nullifier, randomized
+  key, note commitment, ephemeral key, ciphertexts, and spend authorization;
+- the bundle commits an anchor, non-negative fee, proof-system version, proof,
+  and binding signature;
+- the decoder applies body, action, ciphertext, and proof limits before
+  allocation and rejects truncation, trailing bytes, empty fields, and unknown
+  versions;
+- `CanonicalPrivateTransactionVerifier` calls a cryptographic backend only
+  after strict decoding, then rejects any backend result whose authenticated
+  nullifiers, commitments, anchor, or fee differ from the encoded bundle.
+
+The backend remains an interface: this checkpoint does not claim that placeholder
+bytes are valid Orchard proofs. It creates the fail-closed integration point for
+the pinned Orchard/Halo2 verifier in checkpoint 3.
+
+## Hardware validation
+
+The Stage 5 database was validated on WSL by mining 20 blocks, restarting the
+process, and extending the same database to 40 blocks at active height 39. On
+the Stage 6 branch, all 10 checkpoint-1 tests passed under Ubuntu 26.04 with GCC
+15.2. This validates persistence/restart and the private-admission boundary on
+the user's machine; it is not yet a GPU or private-TPS result.
+
 ## Remaining Stage 6 work
 
-1. Define the versioned canonical private transaction bundle and bounded parser.
-2. Connect the pinned Orchard/Halo2 verification backend.
-3. Commit the shielded root, nullifiers, commitments, and undo records into the
+1. Connect the pinned Orchard/Halo2 verification backend.
+2. Commit the shielded root, nullifiers, commitments, and undo records into the
    persistent block/reorganization path.
-4. Bind verified private fees and recipients into reward validation.
-5. Add mempool conflict handling, multi-node tests, and reproducible private-TPS
+3. Bind verified private fees and recipients into reward validation.
+4. Add mempool conflict handling, multi-node tests, and reproducible private-TPS
    benchmarks.
 
 The Stage 5 local node still uses deterministic CPU test proof of work. Its

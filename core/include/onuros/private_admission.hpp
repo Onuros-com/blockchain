@@ -27,6 +27,7 @@ enum class PrivateProofError {
     invalid_proof,
     invalid_signature,
     invalid_balance,
+    invalid_effect_binding,
     unsupported_proof_version
 };
 

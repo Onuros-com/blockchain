@@ -11,8 +11,8 @@
 
 namespace onuros {
 
-// Stage 5 treats the shielded transaction body as an opaque canonical byte
-// sequence. Stage 6 will define and validate its private-transfer semantics.
+// The envelope remains generic. Stage 6 defines the version-2 private body in
+// private_transaction.hpp while preserving the Stage 5 block encoding.
 struct TransactionEnvelope {
     std::uint32_t version = 1;
     std::vector<std::uint8_t> body;
