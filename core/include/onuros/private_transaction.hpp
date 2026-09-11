@@ -393,6 +393,11 @@ public:
         }
 
         const auto& bundle = *decoded.bundle;
+        // Stage 6 has no transparent value pool. Every unit leaving Orchard
+        // must therefore be the transaction fee; negative or unmatched value
+        // balance would otherwise create value outside the reward path.
+        if (bundle.value_balance != bundle.fee)
+            return {PrivateProofError::invalid_balance, {}, {}, {}, 0};
         auto effects = backend_.verify(bundle, private_signature_digest(bundle));
         if (effects.error != PrivateProofError::none) return effects;
 

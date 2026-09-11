@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_and_verifies_real_onuros_wire_bundle() {
+    fn parses_and_verifies_real_orchard_wire_bundle() {
         let mut rng = OsRng;
         let version = BundleVersion::orchard_v2();
         let sk = Option::<SpendingKey>::from(SpendingKey::from_bytes([0; 32]))
@@ -323,6 +323,8 @@ mod tests {
             .prepare(&mut rng, [0; 32])
             .finalize()
             .expect("signatures finalize");
+        // This output-only bundle exercises ONP2 parsing and Orchard crypto.
+        // Full Onuros admission separately rejects value_balance != fee.
         let encoded = encode_authorized_bundle(&bundle, 7);
         assert_eq!(verify(&encoded, &[0; 32]) as i32,
                    Status::Verified as i32);

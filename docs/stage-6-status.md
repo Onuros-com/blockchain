@@ -39,6 +39,9 @@ The second checkpoint defines the consensus-facing private transaction container
 - spend and binding signatures authorize a domain-separated digest of the
   canonical bundle (including fee and proof, excluding only signature bytes),
   avoiding a circular dependency on the final transaction identifier;
+- because Stage 6 has no transparent value pool, ordinary private admission
+  requires the signed Orchard value balance to equal the transaction fee,
+  preventing unmatched negative balance from minting value;
 - the decoder applies body, action, ciphertext, and proof limits before
   allocation and rejects truncation, trailing bytes, empty fields, and unknown
   versions;

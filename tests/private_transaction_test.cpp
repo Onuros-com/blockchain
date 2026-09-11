@@ -35,7 +35,7 @@ PrivateActionBundle action(std::uint8_t seed) {
 PrivateTransactionBundle bundle() {
     PrivateTransactionBundle result;
     result.anchor = value(10U);
-    result.value_balance = -5'000;
+    result.value_balance = 7;
     result.fee = 7;
     result.actions = {action(20U), action(40U)};
     result.proof.resize(orchard_proof_base_size +
@@ -186,6 +186,14 @@ int main() {
     invalid.flags = 0U;
     throws_invalid_argument([&invalid] { encode_private_bundle(invalid); });
 
+    auto signed_boundary = original;
+    signed_boundary.value_balance = std::numeric_limits<Amount>::min();
+    auto signed_round_trip = decode_private_transaction(
+        make_private_transaction(signed_boundary), limits());
+    check(signed_round_trip.accepted());
+    check(signed_round_trip.bundle->value_balance ==
+          std::numeric_limits<Amount>::min());
+
     ScriptedBackend backend;
     CanonicalPrivateTransactionVerifier verifier(backend, limits());
     auto effects = verifier.verify(transaction);
@@ -195,6 +203,12 @@ int main() {
           private_signature_digest(original));
     check(backend.observed_signature_digest != transaction_id(transaction));
     check(effects.nullifiers.size() == original.actions.size());
+
+    auto unbalanced = original;
+    unbalanced.value_balance = -5'000;
+    check(verifier.verify(make_private_transaction(unbalanced)).error ==
+          PrivateProofError::invalid_balance);
+    check(backend.calls == 1U);
 
     auto changed_fee = original;
     ++changed_fee.fee;
