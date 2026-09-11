@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -14,9 +15,14 @@ namespace {
 
 using namespace onuros;
 
-void check(bool condition) {
-    if (!condition) std::abort();
-}
+#define check(condition)                                                       \
+    do {                                                                       \
+        if (!(condition)) {                                                    \
+            std::cerr << "pipeline check failed at line " << __LINE__         \
+                      << ": " #condition << '\n';                              \
+            std::abort();                                                      \
+        }                                                                      \
+    } while (false)
 
 Hash256 value(std::uint8_t byte) {
     Hash256 result{};
