@@ -85,9 +85,10 @@ the user's machine; it is not yet a GPU or private-TPS result.
   private-TPS result.
 - `scripts/run-private-tps.sh` launches synchronized independent processes that
   verify genuine pinned-Orchard Halo2 proofs and reports aggregate sustained
-  verification TPS. Proof construction and warm-up happen before the timed
-  interval. Run it as `./scripts/run-private-tps.sh WORKERS ITERATIONS` on the
-  published benchmark machine.
+  verification TPS. One shared fixture is generated before workers launch;
+  per-process warm-up also happens before the synchronized timed interval. Run
+  it as `./scripts/run-private-tps.sh WORKERS ITERATIONS` on the published
+  benchmark machine.
 
 ## Validation still required before the Stage 6 completion claim
 

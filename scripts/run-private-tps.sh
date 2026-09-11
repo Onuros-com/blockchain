@@ -22,8 +22,11 @@ cargo build --locked --release --manifest-path "$manifest" \
   --bin private_verify_benchmark
 
 start_file="$run_dir/start"
+fixture_file="$run_dir/orchard-fixture.bin"
+"$binary" --generate "$fixture_file"
 for ((worker = 0; worker < workers; ++worker)); do
-  "$binary" "$iterations" "$run_dir/ready-$worker" "$start_file" \
+  "$binary" --verify "$fixture_file" "$iterations" \
+    "$run_dir/ready-$worker" "$start_file" \
     >"$run_dir/result-$worker" 2>"$run_dir/error-$worker" &
   pids+=("$!")
 done

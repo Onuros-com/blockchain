@@ -82,23 +82,15 @@ fn wait_for_start(ready: &Path, start: &Path) {
     }
 }
 
-fn main() {
-    let args: Vec<_> = env::args().collect();
-    let iterations = args.get(1)
-        .map(|value| value.parse::<u64>().expect("iterations must be an integer"))
-        .unwrap_or(100);
+fn run(encoded: Vec<u8>, sighash: [u8; 32], iterations: u64,
+       barrier: Option<(&Path, &Path)>) {
     assert!(iterations > 0, "iterations must be positive");
-    if args.len() != 1 && args.len() != 2 && args.len() != 4 {
-        panic!("usage: onuros-private-verify-benchmark ITERATIONS [READY_FILE START_FILE]");
-    }
-
-    let (encoded, sighash) = fixture();
     let warmup = unsafe {
         onuros_orchard_verify(encoded.as_ptr(), encoded.len(), sighash.as_ptr())
     };
     assert_eq!(warmup, 0, "benchmark fixture must verify");
-    if args.len() == 4 {
-        wait_for_start(Path::new(&args[2]), Path::new(&args[3]));
+    if let Some((ready, start)) = barrier {
+        wait_for_start(ready, start);
     }
 
     let started = Instant::now();
@@ -115,4 +107,44 @@ fn main() {
         seconds,
         iterations as f64 / seconds,
     );
+}
+
+fn main() {
+    let args: Vec<_> = env::args().collect();
+    match args.get(1).map(String::as_str) {
+        Some("--generate") if args.len() == 3 => {
+            let (encoded, sighash) = fixture();
+            let mut bytes = Vec::with_capacity(32 + encoded.len());
+            bytes.extend_from_slice(&sighash);
+            bytes.extend_from_slice(&encoded);
+            fs::write(&args[2], bytes).expect("write benchmark fixture");
+        }
+        Some("--verify") if args.len() == 4 || args.len() == 6 => {
+            let bytes = fs::read(&args[2]).expect("read benchmark fixture");
+            assert!(bytes.len() > 32, "benchmark fixture is truncated");
+            let sighash: [u8; 32] = bytes[..32].try_into()
+                .expect("fixed sighash length");
+            let iterations = args[3].parse::<u64>()
+                .expect("iterations must be an integer");
+            let barrier = if args.len() == 6 {
+                Some((Path::new(&args[4]), Path::new(&args[5])))
+            } else {
+                None
+            };
+            run(bytes[32..].to_vec(), sighash, iterations, barrier);
+        }
+        None => {
+            let (encoded, sighash) = fixture();
+            run(encoded, sighash, 100, None);
+        }
+        Some(iterations) if args.len() == 2 => {
+            let iterations = iterations.parse::<u64>()
+                .expect("iterations must be an integer");
+            let (encoded, sighash) = fixture();
+            run(encoded, sighash, iterations, None);
+        }
+        _ => panic!(
+            "usage: private_verify_benchmark [ITERATIONS] | --generate FILE | --verify FILE ITERATIONS [READY START]"
+        ),
+    }
 }
