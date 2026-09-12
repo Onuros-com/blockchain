@@ -130,4 +130,9 @@ For both physical gates, preserve:
 - configured queue, frame, transaction, block, and timeout limits;
 - raw per-node counters and final pass/fail calculation.
 
+`scripts/validate-stage7-performance-evidence.sh` applies the numeric and
+cross-node checks to three relay manifests or two block-receiver manifests.
+Its output is a summary; the input manifests and raw logs remain the audit
+evidence.
+
 The final evidence index must link the immutable commit containing these files.
