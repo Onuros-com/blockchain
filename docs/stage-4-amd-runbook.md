@@ -49,6 +49,23 @@ the build script. The gate records OS, driver/runtime, device, binary hash,
 command, output, exit status, temperature/power metrics when available, and log
 hashes. Stop rather than terminate the pod after evidence is captured.
 
+The build helper applies two narrow source-compatibility shims required by the
+pinned 2019 worker on Ubuntu 24.04: a fixed Linux `PTHREAD_STACK_MIN` for its
+old bundled Boost and an explicit `<cstdint>` include. These affect only the
+separate GPL reference worker build; they do not change Onuros consensus code.
+
+## Recorded MI300X qualification
+
+The 12 September 2026 RunPod qualification used one AMD Instinct MI300X
+(`gfx942:sramecc+:xnack-`), ROCm 7.1.1 and OpenCL 2.0. The 600-second gate at
+block 30,000 reported a mean of 8.772604 MH/s, a maximum of 8.786889 MH/s and
+one accepted simulated solution. It completed without a fatal error, device
+reset, invalid memory access or thermal shutdown.
+
+- Gate: `amd_kawpow_gate=PASS duration_seconds=600 block=30000`
+- Miner SHA-256: `fc7a1f9223aadb6990d91e7a9bf158f9691c470b237df9eb11f6b6bfa2023fd1`
+- 600-second log SHA-256: `bca9596504396b1df17a154167f8fefe1e74e5d688cbde604464f91ce2b50a02`
+
 ## Pass conditions
 
 1. `make kawpow-test` matches the published block-30,000 mix and final hashes.

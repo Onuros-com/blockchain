@@ -1,0 +1,21 @@
+Stage 4 AMD KawPoW hardware qualification
+Timestamp (UTC): 2026-09-12 10:50:33 to 11:00:48
+Environment: RunPod, Ubuntu 24.04.3 LTS, ROCm 7.1.1, OpenCL 2.0
+GPU: AMD Instinct MI300X
+Architecture: gfx942:sramecc+:xnack-
+GPU memory reported by worker: 191.98 GB
+Test block: 30000
+Requested hashing duration: 600 seconds
+Mean hashrate: 8.772604 MH/s
+Maximum hashrate: 8.786889 MH/s
+Accepted simulated solutions: 1
+Worker exit status: 124 (expected timeout termination)
+Gate result: amd_kawpow_gate=PASS duration_seconds=600 block=30000
+Pinned kawpowminer commit: 632f6ea0a5cd09e2c6443374dbe6db0a767715ba
+Miner SHA-256: fc7a1f9223aadb6990d91e7a9bf158f9691c470b237df9eb11f6b6bfa2023fd1
+Raw 600-second log SHA-256: bca9596504396b1df17a154167f8fefe1e74e5d688cbde604464f91ce2b50a02
+
+The worker initialized the 1.03 GB DAG, maintained a stable non-zero hashrate,
+and showed no fatal error, device reset, invalid memory access or thermal
+shutdown in the supplied output. The CPU consensus-vector and altered-mix
+rejection tests passed separately in the Onuros test suite.

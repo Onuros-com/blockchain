@@ -49,7 +49,7 @@ if grep -Eqi 'no usable mining devices|fatal|segmentation fault' "$log"; then
   echo "amd_kawpow_gate=FAIL reason=runtime_error" | tee -a "$manifest"
   exit 1
 fi
-if ! grep -Eqi '([0-9]+([.][0-9]+)?[[:space:]]*[kmg]?h/s|hashrate)' "$log"; then
+if ! grep -Eqi '([0-9]+([.][0-9]+)?[[:space:]]*[kmg]?h(/s)?|hashrate)' "$log"; then
   echo "amd_kawpow_gate=FAIL reason=no_hashrate_evidence" | tee -a "$manifest"
   exit 1
 fi
