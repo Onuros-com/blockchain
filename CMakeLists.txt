@@ -41,7 +41,7 @@ if(ONUROS_SANITIZERS)
     -fno-omit-frame-pointer)
 endif()
 
-set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test kawpow_test)
+set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test kawpow_test mining_endpoint_test)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   list(APPEND ONUROS_TESTS private_node_orchard_pipeline_test)
 endif()
@@ -50,6 +50,7 @@ foreach(target ${ONUROS_TESTS})
   target_link_libraries(${target} PRIVATE onuros_core)
 endforeach()
 target_link_libraries(kawpow_test PRIVATE onuros_kawpow)
+target_link_libraries(mining_endpoint_test PRIVATE onuros_kawpow)
 
 add_executable(onuros_local_node apps/local_node_main.cpp)
 target_link_libraries(onuros_local_node PRIVATE onuros_core)
@@ -59,6 +60,8 @@ add_executable(onuros_stage7_bandwidth_benchmark apps/stage7_bandwidth_benchmark
 target_link_libraries(onuros_stage7_bandwidth_benchmark PRIVATE onuros_core)
 add_executable(onuros_stage7_network_node apps/stage7_network_node.cpp)
 target_link_libraries(onuros_stage7_network_node PRIVATE onuros_core)
+add_executable(onuros_mining_endpoint apps/mining_endpoint_main.cpp)
+target_link_libraries(onuros_mining_endpoint PRIVATE onuros_core onuros_kawpow)
 if(OpenSSL_FOUND)
   add_executable(tls_transport_test tests/tls_transport_test.cpp)
   target_link_libraries(tls_transport_test PRIVATE onuros_core OpenSSL::SSL OpenSSL::Crypto)
@@ -77,7 +80,7 @@ if(OpenSSL_FOUND)
   endif()
 endif()
 
-foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node)
+foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node onuros_mining_endpoint)
   set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
@@ -122,6 +125,7 @@ add_test(NAME private_reward COMMAND private_reward_test)
 add_test(NAME private_mempool COMMAND private_mempool_test)
 add_test(NAME private_block COMMAND private_block_test)
 add_test(NAME kawpow COMMAND kawpow_test)
+add_test(NAME mining_endpoint COMMAND mining_endpoint_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
 if(NOT WIN32)
@@ -132,6 +136,10 @@ if(NOT WIN32)
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
            $<TARGET_FILE:onuros_stage7_network_node>
            ${CMAKE_CURRENT_BINARY_DIR}/stage7-three-process)
+  add_test(NAME mining_endpoint_loopback COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-mining-endpoint-loopback.sh
+           $<TARGET_FILE:onuros_mining_endpoint>
+           ${CMAKE_CURRENT_BINARY_DIR}/mining-endpoint-loopback)
 endif()
 if(OpenSSL_FOUND AND NOT WIN32)
   add_test(NAME stage7_mutual_tls COMMAND bash

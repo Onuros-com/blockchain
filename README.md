@@ -50,5 +50,11 @@ candidate into the Onuros CPU verifier remains the Stage 7 integration gate.
 See the [Stage 4 audit record](docs/stage-4-audit.md) for the exact closed and
 deferred findings.
 
+The first Stage 7 mining-endpoint checkpoint now defines bounded, versioned
+KawPoW job/solution/result messages and a loopback TCP service. It retains the
+full block template inside the node, rejects stale or replayed jobs, and admits
+only solutions recomputed by the CPU verifier. Public binding, TLS, rate limits
+and an AMD/NVIDIA `Onuros-miner` client remain later checkpoints.
+
 This remains pre-mainnet software. Passing tests and measured throughput do not
 constitute a security audit or readiness for real funds.

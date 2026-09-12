@@ -2,13 +2,15 @@ CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
 TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test
 
-.PHONY: all node network-node benchmark bandwidth-benchmark tls-test test kawpow-test sanitize clean
+.PHONY: all node network-node mining-endpoint benchmark bandwidth-benchmark tls-test test kawpow-test mining-endpoint-test sanitize clean
 
 all: node
 
 node: build/onuros-local-node
 
 network-node: build/onuros-stage7-network-node
+
+mining-endpoint: build/onuros-mining-endpoint
 
 benchmark: build/onuros-private-tps-benchmark
 
@@ -22,6 +24,7 @@ tls-test:
 test: $(addprefix build/,$(TESTS))
 	@for test in $(TESTS); do ./build/$$test || exit $$?; done
 	@$(MAKE) --no-print-directory kawpow-test
+	@$(MAKE) --no-print-directory mining-endpoint-test
 	@bash tests/amd_kawpow_log_parser_test.sh scripts/validate-amd-kawpow-log.sh
 
 kawpow-test:
@@ -36,6 +39,19 @@ kawpow-test:
 	$(CXX) -std=c++17 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/progpow.cpp -o build/kawpow-objects/progpow.o
 	$(CXX) build/kawpow-objects/*.o -o build/kawpow_test
 	./build/kawpow_test
+
+mining-endpoint-test:
+	mkdir -p build/mining-endpoint-objects
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/primes.c -o build/mining-endpoint-objects/primes.o
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/keccak/keccak.c -o build/mining-endpoint-objects/keccak.o
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/keccak/keccakf1600.c -o build/mining-endpoint-objects/keccakf1600.o
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/keccak/keccakf800.c -o build/mining-endpoint-objects/keccakf800.o
+	$(CXX) $(CXXFLAGS) -Icore/include -Ithird_party/ravencoin-kawpow/src -c tests/mining_endpoint_test.cpp -o build/mining-endpoint-objects/test.o
+	$(CXX) $(CXXFLAGS) -Icore/include -Ithird_party/ravencoin-kawpow/src -c core/src/kawpow.cpp -o build/mining-endpoint-objects/onuros.o
+	$(CXX) -std=c++17 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/ethash.cpp -o build/mining-endpoint-objects/ethash.o
+	$(CXX) -std=c++17 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/progpow.cpp -o build/mining-endpoint-objects/progpow.o
+	$(CXX) build/mining-endpoint-objects/*.o -o build/mining_endpoint_test
+	./build/mining_endpoint_test
 
 build/onuros-local-node: apps/local_node_main.cpp
 	mkdir -p build
@@ -52,6 +68,18 @@ build/onuros-stage7-bandwidth-benchmark: apps/stage7_bandwidth_benchmark.cpp
 build/onuros-stage7-network-node: apps/stage7_network_node.cpp
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
+
+build/onuros-mining-endpoint: apps/mining_endpoint_main.cpp
+	mkdir -p build/mining-endpoint-app-objects
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/primes.c -o build/mining-endpoint-app-objects/primes.o
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/keccak/keccak.c -o build/mining-endpoint-app-objects/keccak.o
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/keccak/keccakf1600.c -o build/mining-endpoint-app-objects/keccakf1600.o
+	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/keccak/keccakf800.c -o build/mining-endpoint-app-objects/keccakf800.o
+	$(CXX) $(CXXFLAGS) -Icore/include -Ithird_party/ravencoin-kawpow/src -c $< -o build/mining-endpoint-app-objects/main.o
+	$(CXX) $(CXXFLAGS) -Icore/include -Ithird_party/ravencoin-kawpow/src -c core/src/kawpow.cpp -o build/mining-endpoint-app-objects/onuros.o
+	$(CXX) -std=c++17 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/ethash.cpp -o build/mining-endpoint-app-objects/ethash.o
+	$(CXX) -std=c++17 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/progpow.cpp -o build/mining-endpoint-app-objects/progpow.o
+	$(CXX) build/mining-endpoint-app-objects/*.o -o $@
 
 build/%_test: tests/%_test.cpp
 	mkdir -p build
@@ -71,5 +99,7 @@ sanitize:
 	done
 
 clean:
-	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark
+	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-mining-endpoint build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark
 	$(RM) -r build/kawpow-objects
+	$(RM) -r build/mining-endpoint-objects
+	$(RM) -r build/mining-endpoint-app-objects

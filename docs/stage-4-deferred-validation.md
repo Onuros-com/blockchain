@@ -37,15 +37,18 @@ The evidence summary and artifact hashes are recorded in
 
 Before calling the mining path production-integrated:
 
-- replace the runnable node's deterministic test proof-of-work path with the
-  fail-closed `onuros_kawpow` verifier;
-- submit a GPU-produced nonce and mix through the external node endpoint;
+- retain the completed fail-closed loopback `onuros_kawpow` endpoint while the
+  general synchronization harness continues using deterministic test work;
+- add authenticated public binding and submission rate limits;
+- submit a GPU-produced nonce and mix from `Onuros-miner`;
 - record CPU-verifier acceptance of the valid candidate and rejection of a
   deliberately altered candidate; and
 - repeat a short AMD run against that endpoint.
 
-These tasks extend the existing Stage 7 endpoint work; they do not change the
-roadmap or invalidate the completed MI300X execution evidence.
+The bounded wire protocol, stale/replay rejection and valid/altered two-process
+loopback tests are implemented. The remaining tasks extend that Stage 7 work;
+they do not change the roadmap or invalidate the completed MI300X execution
+evidence.
 
 ## Later hardware hardening
 

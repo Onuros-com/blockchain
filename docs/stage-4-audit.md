@@ -20,10 +20,12 @@ Stage 7 gate.
 
 ## Explicitly deferred to Stage 7
 
-The runnable node still uses its deterministic test proof-of-work path. Stage 7
-must connect incoming GPU candidates to `onuros_kawpow` with fail-closed error
-handling, then demonstrate valid acceptance and altered-candidate rejection on
-an external node. A short AMD rerun will close that final integration gate.
+The general Stage 7 synchronization harness still uses its deterministic test
+proof-of-work path. A dedicated loopback mining endpoint now connects bounded
+wire candidates to `onuros_kawpow` with fail-closed error handling and tests
+valid acceptance plus altered-candidate rejection across two processes. Public
+authenticated binding, the separate `Onuros-miner` GPU client and a short AMD
+rerun remain before the final integration gate can close.
 
 Passing this audit does not constitute a security audit, mainnet readiness or a
 guarantee that production thermal and power limits are suitable.

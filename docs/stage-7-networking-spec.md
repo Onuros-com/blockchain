@@ -5,6 +5,7 @@ three-process synchronization, live headers-first validation, single-owner
 download coordination, resumable chunk checkpoints, persistent peer discovery
 and mutually authenticated TLS 1.3 transport implemented. The bounded multi-peer
 event loop now accepts both raw private-test transports and authenticated TLS;
+the first fail-closed KawPoW mining endpoint is implemented on loopback;
 Windows and independent-machine testing remain open
 
 ## Purpose
@@ -52,6 +53,7 @@ milestones.
 - `get_block`, `block_chunk`
 - `tx_inventory`, `get_transactions`, `transactions`
 - `block_inventory`
+- dedicated mining service: `mining_job`, `mining_solution`, `mining_result`
 
 Every message type receives explicit byte, item-count, nesting and time limits.
 Unknown message types are ignored or rejected according to negotiated protocol
@@ -160,6 +162,25 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   Platform-neutral unit and live socket tests run on Windows; Bash orchestration
   tests remain Linux-only. A green Windows job is required before the Windows
   execution gate is marked complete.
+- The dedicated mining service retains each complete candidate inside the node
+  and sends a fixed-size, versioned KawPoW job containing only job ID, height,
+  header hash and compact target. A miner returns only job ID, nonce and mix.
+  The node rejects unknown, stale and replayed jobs and recomputes KawPoW on the
+  CPU before durable admission. A real two-process loopback test accepts a valid
+  candidate and rejects an altered mix without persistence.
+
+### Mining endpoint boundary
+
+The initial executable listens on loopback only and processes one bounded
+solution per connection. This is intentional: it proves the consensus boundary
+without exposing an unauthenticated expensive-verification service. Before
+public or independent-machine use, the same message payloads must run over the
+authenticated TLS transport with per-peer and per-address submission limits.
+
+AMD and NVIDIA workers will live together in the separate `Onuros-miner`
+repository. The node and CPU verifier remain in this repository. Packaging may
+launch both executables from one UI, but GPU code is never linked into or trusted
+by consensus.
 
 The 1,800-transaction benchmark (9,173 encoded bytes per transaction) measured
 the following block-relay phase. These figures exclude the earlier transaction

@@ -32,6 +32,9 @@ enum class P2pMessageType : std::uint16_t {
     block_inventory = 23U,
     get_headers = 30U,
     headers = 31U,
+    mining_job = 40U,
+    mining_solution = 41U,
+    mining_result = 42U,
     disconnect = 255U
 };
 
@@ -50,6 +53,9 @@ inline bool known_message_type(std::uint16_t value) noexcept {
         case P2pMessageType::block_inventory:
         case P2pMessageType::get_headers:
         case P2pMessageType::headers:
+        case P2pMessageType::mining_job:
+        case P2pMessageType::mining_solution:
+        case P2pMessageType::mining_result:
         case P2pMessageType::disconnect:
             return true;
     }
