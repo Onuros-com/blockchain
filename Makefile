@@ -2,13 +2,15 @@ CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
 TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test stage7_node_admission_test stage7_transaction_frame_test stage7_orchard_network_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test private_node_commit_test
 
-.PHONY: all node network-node mining-endpoint benchmark bandwidth-benchmark tls-test test kawpow-test mining-endpoint-test sanitize clean
+.PHONY: all node network-node private-relay-node mining-endpoint benchmark bandwidth-benchmark tls-test test kawpow-test mining-endpoint-test sanitize clean
 
 all: node
 
 node: build/onuros-local-node
 
 network-node: build/onuros-stage7-network-node
+
+private-relay-node: build/onuros-stage7-private-relay-node
 
 mining-endpoint: build/onuros-mining-endpoint
 
@@ -69,6 +71,10 @@ build/onuros-stage7-network-node: apps/stage7_network_node.cpp
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
 
+build/onuros-stage7-private-relay-node: apps/stage7_private_relay_node.cpp
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
+
 build/onuros-mining-endpoint: apps/mining_endpoint_main.cpp
 	mkdir -p build/mining-endpoint-app-objects
 	$(CC) -std=c11 -O2 -Ithird_party/ravencoin-kawpow/src -c third_party/ravencoin-kawpow/src/crypto/ethash/lib/ethash/primes.c -o build/mining-endpoint-app-objects/primes.o
@@ -99,7 +105,7 @@ sanitize:
 	done
 
 clean:
-	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-mining-endpoint build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark
+	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-stage7-private-relay-node build/onuros-mining-endpoint build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark
 	$(RM) -r build/kawpow-objects
 	$(RM) -r build/mining-endpoint-objects
 	$(RM) -r build/mining-endpoint-app-objects
