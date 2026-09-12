@@ -41,7 +41,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
       - name: Test pinned Orchard bridge
-        run: cargo test --locked --manifest-path crypto/orchard-ffi/Cargo.toml
+        run: cargo test --manifest-path crypto/orchard-ffi/Cargo.toml
+      - name: Report generated lockfile
+        if: always()
+        run: git diff -- crypto/orchard-ffi/Cargo.lock
       - name: Build release bridge
         run: cargo build --locked --manifest-path crypto/orchard-ffi/Cargo.toml --release
       - name: Smoke test real private TPS harness
