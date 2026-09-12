@@ -2,8 +2,9 @@
 
 Status: protocol engine, nonblocking TCP primitives, live loopback relay,
 three-process synchronization, live headers-first validation, single-owner
-download coordination and resumable chunk checkpoints implemented; production
-peer event loop, encrypted transport and independent-machine testing remain open
+download coordination, resumable chunk checkpoints, persistent peer discovery
+and mutually authenticated TLS 1.3 transport implemented; production peer event
+loop and independent-machine testing remain open
 
 ## Purpose
 
@@ -141,6 +142,14 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   sequence discovery. Corrupt checkpoints restore atomically or not at all.
 - Bandwidth accounting separates useful, duplicate, avoided-duplicate and
   resumed bytes without recording private transaction contents.
+- Persistent peer discovery uses a bounded, checksummed database with atomic
+  replacement, deterministic candidate selection and capped exponential retry
+  backoff. Invalid addresses, duplicate records and corrupt databases fail
+  closed.
+- The authenticated transport uses TLS 1.3 with certificates required from
+  both peers and validated against an operator-configured trust root. TLS
+  compression and renegotiation are disabled. Tests generate temporary
+  one-day credentials; no private key is committed to the repository.
 
 The 1,800-transaction benchmark (9,173 encoded bytes per transaction) measured
 the following block-relay phase. These figures exclude the earlier transaction
@@ -153,10 +162,9 @@ gossip that populated each peer's mempool:
 | 90% | 1,710,744 | 89.64% |
 | 100% | 57,764 | 99.65% |
 
-This checkpoint does not complete Stage 7. A production event loop around the
-nonblocking sockets, authenticated encrypted transport, persisted peer
-discovery, independent-machine testing and the sustained ten-minute
-private-transaction gate are still required. The
+This checkpoint does not complete Stage 7. The TLS connection must still be
+wired into the production multi-peer event loop; independent-machine testing
+and the sustained ten-minute private-transaction gate are also required. The
 cross-platform code is structured for Winsock and links `ws2_32`, but Windows
 execution remains a required CI/hardware gate.
 

@@ -1,8 +1,8 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
-TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test
+TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test
 
-.PHONY: all node network-node benchmark bandwidth-benchmark test sanitize clean
+.PHONY: all node network-node benchmark bandwidth-benchmark tls-test test sanitize clean
 
 all: node
 
@@ -13,6 +13,11 @@ network-node: build/onuros-stage7-network-node
 benchmark: build/onuros-private-tps-benchmark
 
 bandwidth-benchmark: build/onuros-stage7-bandwidth-benchmark
+
+tls-test:
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) -Icore/include tests/tls_transport_test.cpp -o build/tls_transport_test -lssl -lcrypto
+	bash scripts/run-stage7-tls-loopback.sh ./build/tls_transport_test
 
 test: $(addprefix build/,$(TESTS))
 	@for test in $(TESTS); do ./build/$$test || exit $$?; done

@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(OnurosLocalBlockchain LANGUAGES CXX)
+find_package(OpenSSL QUIET)
 
 option(ONUROS_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
 set(ONUROS_ORCHARD_FFI_LIBRARY "" CACHE FILEPATH
@@ -16,7 +17,7 @@ if(ONUROS_ORCHARD_FFI_LIBRARY)
   target_link_libraries(onuros_core INTERFACE "${ONUROS_ORCHARD_FFI_LIBRARY}")
 endif()
 
-set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test)
+set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   list(APPEND ONUROS_TESTS private_node_orchard_pipeline_test)
 endif()
@@ -33,6 +34,23 @@ add_executable(onuros_stage7_bandwidth_benchmark apps/stage7_bandwidth_benchmark
 target_link_libraries(onuros_stage7_bandwidth_benchmark PRIVATE onuros_core)
 add_executable(onuros_stage7_network_node apps/stage7_network_node.cpp)
 target_link_libraries(onuros_stage7_network_node PRIVATE onuros_core)
+if(OpenSSL_FOUND)
+  add_executable(tls_transport_test tests/tls_transport_test.cpp)
+  target_link_libraries(tls_transport_test PRIVATE onuros_core OpenSSL::SSL OpenSSL::Crypto)
+  set_target_properties(tls_transport_test PROPERTIES CXX_EXTENSIONS OFF)
+  if(MSVC)
+    target_compile_options(tls_transport_test PRIVATE /W4 /WX /permissive-)
+  else()
+    target_compile_options(tls_transport_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  if(ONUROS_SANITIZERS)
+    if(MSVC)
+      message(FATAL_ERROR "Combined ASan/UBSan requires GCC or Clang")
+    endif()
+    target_compile_options(tls_transport_test PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    target_link_options(tls_transport_test PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all)
+  endif()
+endif()
 
 foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node)
   set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
@@ -57,6 +75,7 @@ add_test(NAME compact_block_relay COMMAND compact_block_relay_test)
 add_test(NAME p2p_protocol COMMAND p2p_protocol_test)
 add_test(NAME p2p_transport COMMAND p2p_transport_test)
 add_test(NAME peer_manager COMMAND peer_manager_test)
+add_test(NAME peer_store COMMAND peer_store_test)
 add_test(NAME block_transfer COMMAND block_transfer_test)
 add_test(NAME stage7_relay COMMAND stage7_relay_test)
 add_test(NAME header_sync COMMAND header_sync_test)
@@ -82,6 +101,11 @@ add_test(NAME stage7_three_process COMMAND bash
          ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
          $<TARGET_FILE:onuros_stage7_network_node>
          ${CMAKE_CURRENT_BINARY_DIR}/stage7-three-process)
+if(OpenSSL_FOUND AND NOT WIN32)
+  add_test(NAME stage7_mutual_tls COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-tls-loopback.sh
+           $<TARGET_FILE:tls_transport_test>)
+endif()
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   add_test(NAME private_node_orchard_pipeline
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-private-node-orchard-test.sh

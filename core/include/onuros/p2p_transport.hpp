@@ -129,6 +129,7 @@ public:
     }
 
     bool valid() const noexcept { return socket_ != invalid_socket; }
+    NativeSocket native_socket() const noexcept { return socket_; }
     SocketIoResult send_some(const std::uint8_t* data, std::size_t size) {
         if (!valid()) return {SocketIoStatus::error, 0U};
         const auto bounded = std::min<std::size_t>(
