@@ -1,0 +1,18 @@
+Sat Sep 12 19:09:45 UTC 2026
+PRETTY_NAME="Ubuntu 26.04.1 LTS"
+Linux onuros-stage7-node-us 7.0.0-1011-gcp #11-Ubuntu SMP PREEMPT Tue Aug 11 17:32:26 UTC 2026 x86_64 GNU/Linux
+role=server
+commit=798a44463441b73c5fd0c930ec8c9340105b859e
+OpenSSL 3.5.5 27 Jan 2026 (Library: OpenSSL 3.5.5 27 Jan 2026)
+subject=CN=gcp-origin
+issuer=CN=Onuros Stage 7 Private CA
+notBefore=Sep 12 17:12:27 2026 GMT
+notAfter=Dec 11 17:12:27 2026 GMT
+sha256 Fingerprint=50:CB:01:37:A1:92:DD:CA:A5:A2:D8:AE:24:CE:84:38:1F:F8:26:B8:84:CA:2C:0E:93:AA:93:67:25:09:78:54
+certificate_san=DNS:gcp-origin
+355448569611417cb2c20952a9cb4d8c957608778f50424d41ed0d5273d8499d  /home/dilovan/onuros-stage7-network/build/onuros_stage7_tls_probe
+ee6c8efce9c565c190d0e4769e294235d8c8621d85ab5eee6995bd2aaafc5e1e  /home/dilovan/onuros-stage7-tls-new/server.crt
+f534423fc372f45cbd1eb186022436f35ffe026feed785d4770664654044b5bb  /home/dilovan/onuros-stage7-tls-new/ca.crt
+2fde30c5c51de86de134b2c98ed4cf02d50bd91644c876940c36a406df91a543  /home/dilovan/onuros-stage7-evidence/tls-rtx4070/server.log
+private_keys_included=false
+independent_tls_evidence=PASS role=server

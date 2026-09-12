@@ -1,0 +1,18 @@
+Sat Sep 12 19:10:40 UTC 2026
+PRETTY_NAME="Ubuntu 26.04.1 LTS"
+Linux DESKTOP-AUA5914 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 GNU/Linux
+role=client
+commit=798a44463441b73c5fd0c930ec8c9340105b859e
+OpenSSL 3.5.5 27 Jan 2026 (Library: OpenSSL 3.5.5 27 Jan 2026)
+subject=CN=rtx4070-observer
+issuer=CN=Onuros Stage 7 Private CA
+notBefore=Sep 12 18:41:24 2026 GMT
+notAfter=Dec 11 18:41:24 2026 GMT
+sha256 Fingerprint=39:0C:18:EC:8D:0B:37:5E:27:10:A1:8C:CA:42:A7:8A:8D:62:68:63:4E:98:96:1C:48:BE:C1:16:33:E6:F0:55
+certificate_san=DNS:rtx4070-observer
+bc66def2ef980120347cf7db134c8579cc636b314282fd46bbc8edac0f877811  /home/arazd/onuros-stage7-network/build/onuros_stage7_tls_probe
+119f89e74e0c0e6fa58ee2c5262c96d72bc4637da2b32b77e4be00f97dde0b2a  /home/arazd/onuros-stage7-tls/rtx4070-observer.crt
+f534423fc372f45cbd1eb186022436f35ffe026feed785d4770664654044b5bb  /home/arazd/onuros-stage7-tls/ca.crt
+fda32c40a2b9930986538a3e0174d8bcedaeee09bdb5be0a1c08120219706bbf  /home/arazd/onuros-stage7-evidence/tls-gcp/client.log
+private_keys_included=false
+independent_tls_evidence=PASS role=client

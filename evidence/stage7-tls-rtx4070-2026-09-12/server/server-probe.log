@@ -1,0 +1,2 @@
+READY bind=0.0.0.0 port=39443
+tls_server=PASS peer_name=rtx4070-observer request_id=1 payload_bytes=14 cipher=TLS_AES_256_GCM_SHA384
