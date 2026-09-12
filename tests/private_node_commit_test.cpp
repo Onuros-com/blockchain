@@ -58,7 +58,7 @@ LocalNodeParameters parameters() {
     const auto pow_limit = decode_compact_target(0x207fffffU);
     check(pow_limit.has_value(), "test proof-of-work limit decodes");
     LocalNodeParameters result;
-    result.validation_limits = {2U, 8U, 4096U, 32U, 1024U};
+    result.validation_limits = {2U, 2U, 4096U, 8U, 1024U};
     result.decode_limits = {4096U, 8U, 1024U};
     result.difficulty.target_block_seconds = 60U;
     result.difficulty.retarget_interval = 60U;
