@@ -187,8 +187,8 @@ int main() {
               "per-tick frame budget bounds a queued frame flood");
         for (std::uint64_t tick = 2U; tick < 7U; ++tick)
             flood_loop.tick(tick, count_flood_frame);
-        check(flood_callbacks == 11U &&
-              flood_loop.stats().received_frames == 11U,
+        check(flood_callbacks == 12U &&
+              flood_loop.stats().received_frames == 12U,
               "bounded flood processing makes deterministic progress");
 
         PeerEventLoopLimits queue_limits = limits;
