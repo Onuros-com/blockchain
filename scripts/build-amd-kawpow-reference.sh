@@ -10,6 +10,7 @@ readonly source_dir="${1:-/workspace/kawpowminer-reference}"
 readonly build_dir="${source_dir}/build-onuros-amd"
 readonly compat_include_dir="${build_dir}/onuros-compat"
 readonly vector_ref_path='libdevcore/vector_ref.h'
+readonly clminer_path='libethash-cl/CLMiner.cpp'
 
 for tool in git cmake make cmp sha256sum cut; do
   if ! command -v "$tool" >/dev/null; then
@@ -41,7 +42,8 @@ if [[ "$(git -C "$source_dir" rev-parse HEAD)" != "$commit" ]]; then
   exit 1
 fi
 if ! git -C "$source_dir" diff --quiet "$commit" -- . \
-        ":(exclude)${vector_ref_path}"; then
+        ":(exclude)${vector_ref_path}" \
+        ":(exclude)${clminer_path}"; then
   echo "worker source has unexpected tracked modifications" >&2
   exit 1
 fi
@@ -73,6 +75,18 @@ if ! git -C "$source_dir" diff --quiet "$commit" -- "$vector_ref_path" &&
 fi
 cp "$expected_vector_ref" "$vector_ref"
 
+readonly clminer="${source_dir}/${clminer_path}"
+readonly expected_clminer="${compat_include_dir}/CLMiner.expected.cpp"
+git -C "$source_dir" show "${commit}:${clminer_path}" >"$expected_clminer"
+sed -i '/2 \* sizeof(results.count), (void\*)\&results.count);/a\            const uint32_t resultCount = results.count < c_maxSearchResults ? results.count : c_maxSearchResults;' "$expected_clminer"
+sed -i 's/if (results.count)/if (resultCount)/g; s/results.count \* sizeof(results.rslt\[0\])/resultCount * sizeof(results.rslt[0])/g; s/i < results.count/i < resultCount/g' "$expected_clminer"
+if ! git -C "$source_dir" diff --quiet "$commit" -- "$clminer_path" &&
+   ! cmp -s "$clminer" "$expected_clminer"; then
+  echo "refusing unexpected CLMiner.cpp modifications" >&2
+  exit 2
+fi
+cp "$expected_clminer" "$clminer"
+
 CPLUS_INCLUDE_PATH="${compat_include_dir}${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}" \
 cmake -S "$source_dir" -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
@@ -91,6 +105,6 @@ fi
 echo "amd_reference_build=PASS"
 echo "upstream_commit=$commit"
 printf 'compatibility_diff_sha256='
-git -C "$source_dir" diff --binary -- "$vector_ref_path" | sha256sum | cut -d' ' -f1
+git -C "$source_dir" diff --binary -- "$vector_ref_path" "$clminer_path" | sha256sum | cut -d' ' -f1
 echo "miner=$miner"
 sha256sum "$miner"
