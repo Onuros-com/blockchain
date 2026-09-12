@@ -206,8 +206,10 @@ class PersistentBlockStore {
             const auto record_start = offset;
             std::uint32_t payload_size = 0U;
             if (!detail::take_u32(bytes, offset, payload_size)) break;
+            const auto max_block_bytes =
+                effective_block_limit(decode_limits_.max_block_bytes);
             if (payload_size < minimum_record_payload_ ||
-                payload_size > decode_limits_.max_block_bytes + 36U)
+                payload_size > max_block_bytes + 36U)
                 return BlockStoreError::corrupt_database;
             if (offset > bytes.size() || payload_size > bytes.size() - offset ||
                 bytes.size() - offset - payload_size < 32U)
@@ -223,7 +225,7 @@ class PersistentBlockStore {
 
             std::uint32_t encoded_size = 0U;
             if (!detail::take_u32(bytes, offset, encoded_size) ||
-                encoded_size > decode_limits_.max_block_bytes ||
+                encoded_size > max_block_bytes ||
                 encoded_size > payload_end - offset)
                 return BlockStoreError::corrupt_database;
             std::vector<std::uint8_t> encoded(
@@ -315,7 +317,7 @@ public:
         if (blocks_.size() == std::numeric_limits<std::uint32_t>::max())
             return BlockStoreError::database_too_large;
         const auto encoded = encode_block(block);
-        if (encoded.size() > decode_limits_.max_block_bytes ||
+        if (encoded.size() > effective_block_limit(decode_limits_.max_block_bytes) ||
             encoded.size() > std::numeric_limits<std::uint32_t>::max())
             return BlockStoreError::invalid_block_encoding;
         const auto target = decode_compact_target(block.header.compact_target);

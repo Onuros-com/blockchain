@@ -1,6 +1,6 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
-Status: approved design target; implementation has not started
+Status: implementation started; initial 16 MiB block ceiling selected
 
 ## Purpose
 
@@ -59,14 +59,22 @@ per second and a 60-second block target, a full interval can approach 6,000
 transactions and approximately 55 MB before framing overhead. Stage 7 must not
 assume that a complete block fits safely in one small network message.
 
+- The initial private-testnet consensus ceiling is exactly 16 MiB
+  (16,777,216 serialized bytes), enforced from one shared constant by block
+  decoding, contextual validation and persistent storage. P2P framing must use
+  the same constant when implemented.
 - Blocks are transferred in independently bounded chunks.
 - Chunk order, total size, block identifier and final checksum are committed
   before activation.
 - Validation streams from bounded storage rather than duplicating an entire
   block in each peer buffer.
 - In-flight bytes, chunks and block requests are limited globally and per peer.
-- Initial testnet block limits are selected from measured propagation and
-  verification results, not from the 100 TPS aspiration alone.
+- The 16 MiB ceiling is a safety bound, not a claim that the current roughly
+  9 KB transaction format can settle 100 TPS on-chain. Current encoding fits
+  roughly 1,800 two-action transactions per full block (about 30 TPS at a
+  60-second interval). Reaching the roadmap's 100 TPS settlement target without
+  restoring 55 MB blocks requires measured transaction/proof-size reduction or
+  safe aggregation; relay and verification benchmarks are reported separately.
 
 ## Peer and denial-of-service controls
 
@@ -145,4 +153,3 @@ publish after removing IP addresses where appropriate.
 
 If Gate 6 or 7 fails, Stage 7 remains incomplete and measurements determine
 whether to optimize verification, block limits, relay or transaction design.
-

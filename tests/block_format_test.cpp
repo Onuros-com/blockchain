@@ -135,6 +135,24 @@ int main() {
         check(!decode_block(encoded_block, {1024U, 8U, 1U}),
               "excess transaction body rejected");
 
+        check(max_serialized_block_bytes == 16U * 1024U * 1024U,
+              "consensus block ceiling is exactly 16 MiB");
+        Block boundary_block{header, {{1U, std::vector<std::uint8_t>(
+            max_serialized_block_bytes - block_prefix_encoded_size - 8U)}}};
+        boundary_block.header.transactions_root =
+            transaction_root(boundary_block.transactions);
+        auto boundary_encoding = encode_block(boundary_block);
+        check(boundary_encoding.size() == max_serialized_block_bytes &&
+              decode_block(boundary_encoding,
+                           {max_serialized_block_bytes + 1U, 1U,
+                            static_cast<std::uint32_t>(max_serialized_block_bytes)}),
+              "exactly 16 MiB block remains valid");
+        boundary_encoding.push_back(0U);
+        check(!decode_block(boundary_encoding,
+                            {max_serialized_block_bytes + 1U, 1U,
+                             static_cast<std::uint32_t>(max_serialized_block_bytes)}),
+              "configured decoder cannot bypass 16 MiB consensus ceiling");
+
         const auto encoded_first = encode_transaction(first);
         const auto decoded_first = decode_transaction(encoded_first, 128U);
         check(decoded_first.has_value() && encode_transaction(*decoded_first) == encoded_first,

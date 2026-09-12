@@ -63,6 +63,15 @@ int main() {
               BlockValidationError::block_too_large, "block size rejected");
 
         changed = block;
+        changed.transactions = {{1U, std::vector<std::uint8_t>(
+            max_serialized_block_bytes - block_prefix_encoded_size - 8U + 1U)}};
+        check(validate_block(changed,
+              {1U, 1U, max_serialized_block_bytes + 1U, 8U,
+               static_cast<std::uint32_t>(max_serialized_block_bytes)},
+              context, accepts_work) == BlockValidationError::block_too_large,
+              "configured validator cannot bypass 16 MiB consensus ceiling");
+
+        changed = block;
         changed.transactions[0].body[0] ^= 1U;
         check(validate_block(changed, limits, context, accepts_work) ==
               BlockValidationError::invalid_transaction_root, "wrong Merkle root rejected");

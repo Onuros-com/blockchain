@@ -1,5 +1,6 @@
 #pragma once
 
+#include "onuros/consensus_limits.hpp"
 #include "onuros/economics.hpp"
 #include "onuros/hash256.hpp"
 
@@ -208,7 +209,7 @@ inline std::optional<TransactionEnvelope> decode_transaction(
 
 inline std::optional<Block> decode_block(const std::vector<std::uint8_t>& input,
                                          DecodeLimits limits) {
-    if (input.size() > limits.max_block_bytes ||
+    if (input.size() > effective_block_limit(limits.max_block_bytes) ||
         input.size() < block_prefix_encoded_size)
         return std::nullopt;
     detail::ByteReader reader(input);
