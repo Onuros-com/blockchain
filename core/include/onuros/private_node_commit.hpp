@@ -144,6 +144,7 @@ enum class PrivateCommitError {
     none,
     recovery_required,
     unsupported_genesis,
+    inactive_branch,
     state_mismatch,
     private_validation_failed,
     journal_error,
@@ -196,6 +197,88 @@ class PrivateNodeCommitCoordinator {
         return result;
     }
 
+    static std::optional<ReorganizationPlan> plan_between(
+            const ChainIndex& index, Hash256 from, Hash256 to) {
+        ReorganizationPlan plan;
+        auto old_entry = index.find(from);
+        auto new_entry = index.find(to);
+        if (old_entry == nullptr || new_entry == nullptr) return std::nullopt;
+        while (old_entry->height > new_entry->height) {
+            plan.disconnect.push_back(old_entry->id);
+            old_entry = index.find(old_entry->parent);
+            if (old_entry == nullptr) return std::nullopt;
+        }
+        while (new_entry->height > old_entry->height) {
+            plan.connect.push_back(new_entry->id);
+            new_entry = index.find(new_entry->parent);
+            if (new_entry == nullptr) return std::nullopt;
+        }
+        while (old_entry->id != new_entry->id) {
+            plan.disconnect.push_back(old_entry->id);
+            plan.connect.push_back(new_entry->id);
+            old_entry = index.find(old_entry->parent);
+            new_entry = index.find(new_entry->parent);
+            if (old_entry == nullptr || new_entry == nullptr)
+                return std::nullopt;
+        }
+        std::reverse(plan.connect.begin(), plan.connect.end());
+        return plan;
+    }
+
+    PrivateCommitResult prepare_reorganization(
+            const ReorganizationPlan& plan, const Block& candidate,
+            std::vector<ShieldedConnect>& connects) const {
+        auto staged = shielded_.state();
+        for (const auto& id : plan.disconnect) {
+            const auto error = staged.disconnect(id);
+            if (error != PrivateAdmissionError::none) {
+                PrivateCommitResult result;
+                result.error = PrivateCommitError::state_mismatch;
+                result.admission_error = error;
+                return result;
+            }
+        }
+        connects.clear();
+        connects.reserve(plan.connect.size());
+        const auto candidate_id = block_id(candidate.header);
+        for (const auto& id : plan.connect) {
+            const Block* block = nullptr;
+            if (id == candidate_id) {
+                block = &candidate;
+            } else {
+                const auto* stored = node_.store().find(id);
+                if (stored != nullptr) block = &stored->block;
+            }
+            if (block == nullptr || block_id(block->header) != id) {
+                PrivateCommitResult result;
+                result.error = PrivateCommitError::state_mismatch;
+                return result;
+            }
+            auto prepared = PrivateBlockValidator::prepare(
+                staged, *block, verifier_, root_calculator_, reward_policy_,
+                admission_limits_);
+            if (!prepared.accepted()) {
+                PrivateCommitResult result;
+                result.error = PrivateCommitError::private_validation_failed;
+                result.private_error = prepared.error;
+                result.admission_error = prepared.admission_error;
+                result.proof_error = prepared.proof_error;
+                result.reward_error = prepared.reward_error;
+                return result;
+            }
+            if (staged.connect(id, block->header.shielded_root,
+                               *prepared.prepared) !=
+                    PrivateAdmissionError::none) {
+                PrivateCommitResult result;
+                result.error = PrivateCommitError::state_mismatch;
+                return result;
+            }
+            connects.push_back(
+                {id, block->header.shielded_root, *prepared.prepared});
+        }
+        return {};
+    }
+
     PrivateCommitResult clear_with_action(PrivateRecoveryAction action) const {
         const auto journal_error = journal_.clear();
         if (journal_error != PrivateCommitJournalError::none) {
@@ -237,13 +320,37 @@ public:
         }
         if (block.header.height == 0U)
             return {PrivateCommitError::unsupported_genesis};
-        if (node_.active_state().tip() != block.header.previous ||
-            shielded_.state().tip() != block.header.previous ||
-            node_.active_state().tip() != shielded_.state().tip())
+        if (!node_.active_state().tip() ||
+            *node_.active_state().tip() != shielded_.state().tip())
             return {PrivateCommitError::state_mismatch};
 
-        PreparedPrivateBlock prepared;
-        const auto validation = validate_private(block, prepared);
+        const auto target = decode_compact_target(block.header.compact_target);
+        if (!target || !is_canonical_compact_target(
+                           block.header.compact_target)) {
+            PrivateCommitResult result;
+            result.error = PrivateCommitError::node_rejected;
+            result.node_result.error = LocalNodeError::invalid_work;
+            return result;
+        }
+        auto prospective_index = node_.store().index();
+        const auto id = block_id(block.header);
+        const auto index_result = prospective_index.add_block(
+            id, block.header.previous, block.header.height,
+            chain_work_from_target_work(work_for_target(*target)),
+            block.header.timestamp);
+        if (index_result.error != ChainIndexError::none) {
+            PrivateCommitResult result;
+            result.error = PrivateCommitError::node_rejected;
+            result.node_result.error = LocalNodeError::chain_index_rejected;
+            return result;
+        }
+        if (!index_result.reorganization ||
+            index_result.reorganization->connect.empty() ||
+            index_result.reorganization->connect.back() != id)
+            return {PrivateCommitError::inactive_branch};
+        std::vector<ShieldedConnect> connects;
+        const auto validation = prepare_reorganization(
+            *index_result.reorganization, block, connects);
         if (!validation.accepted()) return validation;
         const auto journal_error = journal_.write(block, adjusted_time);
         if (journal_error != PrivateCommitJournalError::none) {
@@ -261,14 +368,13 @@ public:
             result.node_result = node_result;
             return result;
         }
-        const auto id = block_id(block.header);
         if (node_.active_state().tip() != id) {
             PrivateCommitResult result;
             result.error = PrivateCommitError::state_mismatch;
             return result;
         }
-        const auto shielded_error = shielded_.connect(
-            id, block.header.shielded_root, *prepared.prepared);
+        const auto shielded_error = shielded_.reorg(
+            index_result.reorganization->disconnect, connects);
         if (shielded_error != ShieldedStoreError::none) {
             PrivateCommitResult result;
             result.error = PrivateCommitError::shielded_state_rejected;
@@ -304,14 +410,17 @@ public:
             return clear_with_action(
                 PrivateRecoveryAction::cleared_completed_intent);
         }
-        if (shielded_.state().tip() != block.header.previous)
+        const auto plan = plan_between(
+            node_.store().index(), shielded_.state().tip(), id);
+        if (!plan || plan->connect.empty() || plan->connect.back() != id)
             return {PrivateCommitError::state_mismatch};
 
-        PreparedPrivateBlock prepared;
-        const auto validation = validate_private(block, prepared);
+        std::vector<ShieldedConnect> connects;
+        const auto validation = prepare_reorganization(
+            *plan, block, connects);
         if (!validation.accepted()) return validation;
-        const auto shielded_error = shielded_.connect(
-            id, block.header.shielded_root, *prepared.prepared);
+        const auto shielded_error = shielded_.reorg(
+            plan->disconnect, connects);
         if (shielded_error != ShieldedStoreError::none) {
             PrivateCommitResult result;
             result.error = PrivateCommitError::shielded_state_rejected;
