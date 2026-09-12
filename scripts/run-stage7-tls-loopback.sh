@@ -11,9 +11,10 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
 for peer in server client; do
   openssl req -newkey rsa:2048 -nodes -sha256 -subj "/CN=onuros-$peer" \
     -keyout "$work/$peer.key" -out "$work/$peer.csr" >/dev/null 2>&1
+  printf "subjectAltName=DNS:onuros-%s\nextendedKeyUsage=serverAuth,clientAuth\n" "$peer" > "$work/$peer.ext"
   openssl x509 -req -days 1 -sha256 -in "$work/$peer.csr" \
     -CA "$work/ca.crt" -CAkey "$work/ca.key" -CAcreateserial \
-    -out "$work/$peer.crt" >/dev/null 2>&1
+    -extfile "$work/$peer.ext" -out "$work/$peer.crt" >/dev/null 2>&1
 done
 
 "$binary" "$work/server.crt" "$work/server.key" \
