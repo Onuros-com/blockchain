@@ -144,6 +144,9 @@ if(NOT WIN32)
   add_test(NAME amd_kawpow_log_parser COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/tests/amd_kawpow_log_parser_test.sh
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-amd-kawpow-log.sh)
+  add_test(NAME stage7_performance_manifest COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/tests/stage7_performance_manifest_test.sh
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-stage7-performance-evidence.sh)
   add_test(NAME stage7_three_process COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
            $<TARGET_FILE:onuros_stage7_network_node>
