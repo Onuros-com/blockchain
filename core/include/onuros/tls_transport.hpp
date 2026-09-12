@@ -81,10 +81,16 @@ class TlsConnection {
 
 public:
     TlsConnection(TlsContext& context, const TcpConnection& connection,
-                  TlsRole role)
+                  TlsRole role,
+                  const std::string& expected_peer_name = {})
         : ssl_(SSL_new(context.native_context())) {
         if (!ssl_ || SSL_set_fd(ssl_.get(),
                 static_cast<int>(connection.native_socket())) != 1) {
+            ssl_.reset();
+            return;
+        }
+        if (!expected_peer_name.empty() &&
+            SSL_set1_host(ssl_.get(), expected_peer_name.c_str()) != 1) {
             ssl_.reset();
             return;
         }
@@ -130,8 +136,10 @@ class TlsPeerTransport final : public PeerTransport {
     TcpConnection connection_;
     TlsConnection tls_;
 public:
-    TlsPeerTransport(TlsContext& context, TcpConnection connection, TlsRole role)
-        : connection_(std::move(connection)), tls_(context, connection_, role) {}
+    TlsPeerTransport(TlsContext& context, TcpConnection connection, TlsRole role,
+                     const std::string& expected_peer_name = {})
+        : connection_(std::move(connection)),
+          tls_(context, connection_, role, expected_peer_name) {}
 
     TlsStatus handshake() { return tls_.handshake(); }
     const char* cipher() const noexcept { return tls_.cipher(); }
