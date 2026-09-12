@@ -1,3 +1,5 @@
+#include "onuros/download_coordinator.hpp"
+#include "onuros/header_sync.hpp"
 #include "onuros/local_node.hpp"
 #include "onuros/p2p_transport.hpp"
 #include "onuros/stage7_relay.hpp"
@@ -38,10 +40,10 @@ LocalNodeParameters parameters() {
 }
 
 Block ensure_genesis(LocalNode& node) {
-    if (const auto* tip = node.store().index().active_tip()) {
+    if (node.store().index().active_tip() != nullptr) {
         const auto* genesis = node.store().blocks().empty()
             ? nullptr : &node.store().blocks().front().block;
-        if (tip->height > 1U || genesis == nullptr)
+        if (genesis == nullptr)
             throw std::runtime_error("unexpected test database state");
         return *genesis;
     }
@@ -52,22 +54,26 @@ Block ensure_genesis(LocalNode& node) {
     return *genesis;
 }
 
-Block ensure_relay_block(LocalNode& node) {
+void ensure_relay_blocks(LocalNode& node, Height target_height) {
     const auto* tip = node.store().index().active_tip();
     if (tip == nullptr) throw std::runtime_error("genesis is missing");
-    if (tip->height == 1U) {
-        const auto* stored = node.store().find(tip->id);
-        if (stored == nullptr) throw std::runtime_error("active block is missing");
-        return stored->block;
+    while (tip->height < target_height) {
+        const auto next_height = tip->height + 1U;
+        std::vector<TransactionEnvelope> transactions;
+        for (std::uint8_t i = 1U; i <= 20U; ++i) {
+            std::vector<std::uint8_t> body(128U, i);
+            body[0] = static_cast<std::uint8_t>(next_height);
+            transactions.push_back({1U, std::move(body)});
+        }
+        const auto timestamp = 100U + next_height * 60U;
+        auto block = node.make_candidate(std::move(transactions), timestamp);
+        if (!block || node.mine(*block, timestamp, 100'000U).error !=
+                LocalNodeError::none)
+            throw std::runtime_error("could not mine relay block sequence");
+        tip = node.store().index().active_tip();
     }
-    if (tip->height != 0U) throw std::runtime_error("unexpected server height");
-    std::vector<TransactionEnvelope> transactions;
-    for (std::uint8_t i = 1U; i <= 20U; ++i)
-        transactions.push_back({1U, std::vector<std::uint8_t>(128U, i)});
-    auto block = node.make_candidate(std::move(transactions), 160U);
-    if (!block || node.mine(*block, 160U, 100'000U).error != LocalNodeError::none)
-        throw std::runtime_error("could not mine relay block");
-    return *block;
+    if (tip->height != target_height)
+        throw std::runtime_error("server database exceeds requested height");
 }
 
 bool send_all(TcpConnection& connection, const std::vector<std::uint8_t>& bytes) {
@@ -142,35 +148,75 @@ std::optional<TcpConnection> connect_with_retry(std::uint16_t port) {
     return std::nullopt;
 }
 
-void serve_peer(TcpConnection& connection, const Block& genesis,
-                const Block& block, std::uint64_t nonce) {
+void serve_peer(TcpConnection& connection, const LocalNode& node,
+                const Block& genesis, std::uint64_t nonce) {
     FrameStreamDecoder stream({}, 2U * 1024U * 1024U);
-    exchange_hello(connection, stream, block_id(genesis.header), nonce, 1U);
-    send_frame(connection, P2pMessageType::compact_block, 2U,
-        encode_compact_block_announcement(make_compact_block_announcement(block)));
-    const auto request_frame = receive_frame(connection, stream);
-    if (request_frame.type != P2pMessageType::get_block_transactions)
-        throw std::runtime_error("expected missing transaction request");
-    const auto request = decode_missing_transaction_request(
-        request_frame.payload, 512U);
-    if (!request || request->block_identifier != block_id(block.header))
-        throw std::runtime_error("invalid missing transaction request");
-    const auto chunks = make_block_transaction_chunks(block, request->indexes,
-                                                       64U * 1024U);
-    if (!chunks) throw std::runtime_error("could not construct response chunks");
-    for (const auto& chunk : *chunks)
-        send_frame(connection, P2pMessageType::block_transactions,
-                   request_frame.request_id,
-                   encode_block_transaction_chunk(chunk));
+    const auto* tip = node.store().index().active_tip();
+    if (tip == nullptr) throw std::runtime_error("server tip is missing");
+    exchange_hello(connection, stream, block_id(genesis.header), nonce, tip->height);
+
+    const auto header_request_frame = receive_frame(connection, stream);
+    if (header_request_frame.type != P2pMessageType::get_headers)
+        throw std::runtime_error("expected header locator request");
+    const auto header_request = decode_header_request(
+        header_request_frame.payload, 32U);
+    if (!header_request) throw std::runtime_error("invalid header locator request");
+    const auto& active = node.active_state().chain;
+    std::optional<std::size_t> matched;
+    for (const auto& locator : header_request->locator) {
+        for (std::size_t position = active.size(); position != 0U; --position) {
+            if (active[position - 1U] == locator) {
+                matched = position - 1U;
+                break;
+            }
+        }
+        if (matched) break;
+    }
+    if (!matched) throw std::runtime_error("header locator has no common ancestor");
+    std::vector<BlockHeader> headers;
+    std::vector<const Block*> blocks;
+    for (std::size_t position = *matched + 1U; position < active.size(); ++position) {
+        const auto* stored = node.store().find(active[position]);
+        if (stored == nullptr) throw std::runtime_error("active block is missing");
+        headers.push_back(stored->block.header);
+        blocks.push_back(&stored->block);
+        if (header_request->stop != Hash256{} &&
+            active[position] == header_request->stop)
+            break;
+    }
+    send_frame(connection, P2pMessageType::headers,
+               header_request_frame.request_id, encode_headers(headers));
+
+    std::uint64_t request_id = header_request_frame.request_id + 1U;
+    for (const auto* block : blocks) {
+        send_frame(connection, P2pMessageType::compact_block, request_id,
+            encode_compact_block_announcement(
+                make_compact_block_announcement(*block)));
+        const auto request_frame = receive_frame(connection, stream);
+        if (request_frame.type != P2pMessageType::get_block_transactions ||
+            request_frame.request_id != request_id)
+            throw std::runtime_error("expected missing transaction request");
+        const auto request = decode_missing_transaction_request(
+            request_frame.payload, 512U);
+        if (!request || request->block_identifier != block_id(block->header))
+            throw std::runtime_error("invalid missing transaction request");
+        const auto chunks = make_block_transaction_chunks(
+            *block, request->indexes, 64U * 1024U);
+        if (!chunks) throw std::runtime_error("could not construct response chunks");
+        for (const auto& chunk : *chunks)
+            send_frame(connection, P2pMessageType::block_transactions,
+                       request_id, encode_block_transaction_chunk(chunk));
+        ++request_id;
+    }
 }
 
 void run_server(const std::filesystem::path& data, std::uint16_t port,
-                unsigned peers) {
+                unsigned peers, Height target_height) {
     LocalNode node(parameters(), test_pow);
     if (node.open(data).error != LocalNodeError::none)
         throw std::runtime_error("server database open failed");
     const auto genesis = ensure_genesis(node);
-    const auto block = ensure_relay_block(node);
+    ensure_relay_blocks(node, target_height);
     auto listener = TcpListener::listen_loopback(port);
     if (!listener) throw std::runtime_error("server listen failed");
     std::cout << "READY port=" << listener->port() << std::endl;
@@ -182,35 +228,57 @@ void run_server(const std::filesystem::path& data, std::uint16_t port,
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         if (!connection) throw std::runtime_error("server accept timeout");
-        serve_peer(*connection, genesis, block, 10'000U + peer);
+        serve_peer(*connection, node, genesis, 10'000U + peer);
     }
     std::cout << "SYNCED peers=" << peers
-              << " tip=" << hash_hex(block_id(block.header)) << std::endl;
+              << " tip=" << hash_hex(node.store().index().active_tip()->id)
+              << std::endl;
 }
 
 void run_client(const std::filesystem::path& data, std::uint16_t port,
-                std::uint64_t nonce) {
+                std::uint64_t nonce, Height target_height) {
     LocalNode node(parameters(), test_pow);
     if (node.open(data).error != LocalNodeError::none)
         throw std::runtime_error("client database open failed");
     const auto genesis = ensure_genesis(node);
     const auto* existing = node.store().index().active_tip();
-    if (existing != nullptr && existing->height == 1U) {
-        std::cout << "RECOVERED height=1 tip=" << hash_hex(existing->id)
+    if (existing != nullptr && existing->height == target_height) {
+        std::cout << "RECOVERED height=" << target_height
+                  << " tip=" << hash_hex(existing->id)
                   << std::endl;
         return;
     }
     auto connection = connect_with_retry(port);
     if (!connection) throw std::runtime_error("client connect timeout");
     FrameStreamDecoder stream({}, 2U * 1024U * 1024U);
-    exchange_hello(*connection, stream, block_id(genesis.header), nonce, 0U);
-    const auto compact_frame = receive_frame(*connection, stream);
-    if (compact_frame.type != P2pMessageType::compact_block)
-        throw std::runtime_error("expected compact block");
-    const auto announcement = decode_compact_block_announcement(
-        compact_frame.payload, 512U, 64U * 1024U);
-    if (!announcement) throw std::runtime_error("invalid compact block");
+    exchange_hello(*connection, stream, block_id(genesis.header), nonce,
+                   existing == nullptr ? 0U : existing->height);
+    if (existing == nullptr) throw std::runtime_error("local genesis is missing");
+    send_frame(*connection, P2pMessageType::get_headers, 2U,
+               encode_header_request({{existing->id}, {}}));
+    const auto headers_frame = receive_frame(*connection, stream);
+    if (headers_frame.type != P2pMessageType::headers ||
+        headers_frame.request_id != 2U)
+        throw std::runtime_error("expected header batch");
+    const auto headers = decode_headers(headers_frame.payload, 1'600U);
+    if (!headers || headers->empty()) throw std::runtime_error("empty header batch");
+    HeaderSyncLimits header_limits;
+    header_limits.difficulty = parameters().difficulty;
+    HeaderSyncChain header_chain(header_limits, test_pow);
+    const auto* stored_tip = node.store().find(existing->id);
+    if (stored_tip == nullptr ||
+        header_chain.seed(stored_tip->block.header, existing->accumulated_work) !=
+            HeaderSyncError::none)
+        throw std::runtime_error("could not seed local header chain");
+    const auto header_result = header_chain.accept(
+        *headers, 100U + target_height * 60U);
+    if (header_result.error != HeaderSyncError::none ||
+        !header_result.stronger_tip ||
+        header_chain.best_tip()->header.height != target_height)
+        throw std::runtime_error("header chain validation failed");
+
     ValidatedRelayPool pool(512U, 1U << 20U);
+    BlockDownloadCoordinator coordinator(1U, 30U);
     BlockChunkLimits limits;
     limits.maximum_chunk_bytes = 64U * 1024U;
     limits.maximum_transactions_per_chunk = 512U;
@@ -218,40 +286,62 @@ void run_client(const std::filesystem::path& data, std::uint16_t port,
     limits.maximum_total_chunks = 512U;
     limits.maximum_total_transactions = 512U;
     limits.maximum_total_transfer_bytes = 1U << 20U;
-    CompactDownloadResult immediate;
-    CompactBlockDownload download(*announcement, pool, limits,
-        [](const TransactionEnvelope& transaction) {
-            return transaction.version == 1U && transaction.body.size() == 128U;
-        });
-    const auto request = download.start(immediate);
-    if (!request) throw std::runtime_error("expected missing transactions");
-    send_frame(*connection, P2pMessageType::get_block_transactions, 2U,
-               encode_missing_transaction_request(*request));
-    CompactDownloadResult completed;
-    while (!completed.block) {
-        const auto chunk_frame = receive_frame(*connection, stream);
-        if (chunk_frame.type != P2pMessageType::block_transactions ||
-            chunk_frame.request_id != 2U)
-            throw std::runtime_error("unexpected block response");
-        const auto chunk = decode_block_transaction_chunk(
-            chunk_frame.payload, limits);
-        if (!chunk) throw std::runtime_error("invalid block response chunk");
-        completed = download.add_chunk(*chunk);
-        if (completed.error != CompactDownloadError::none)
-            throw std::runtime_error("compact block reconstruction failed");
+    std::uint64_t request_id = 3U;
+    for (const auto& expected_header : *headers) {
+        const auto compact_frame = receive_frame(*connection, stream);
+        if (compact_frame.type != P2pMessageType::compact_block ||
+            compact_frame.request_id != request_id)
+            throw std::runtime_error("expected compact block");
+        const auto announcement = decode_compact_block_announcement(
+            compact_frame.payload, 512U, 64U * 1024U);
+        if (!announcement || !(announcement->header == expected_header))
+            throw std::runtime_error("compact block was not header-approved");
+        const auto identifier = block_id(announcement->header);
+        if (coordinator.claim(identifier, 1U, 0U) !=
+                DownloadClaimResult::claimed)
+            throw std::runtime_error("duplicate block download rejected");
+        CompactDownloadResult immediate;
+        CompactBlockDownload download(*announcement, pool, limits,
+            [](const TransactionEnvelope& transaction) {
+                return transaction.version == 1U && transaction.body.size() == 128U;
+            });
+        const auto request = download.start(immediate);
+        if (!request) throw std::runtime_error("expected missing transactions");
+        send_frame(*connection, P2pMessageType::get_block_transactions, request_id,
+                   encode_missing_transaction_request(*request));
+        CompactDownloadResult completed;
+        while (!completed.block) {
+            const auto chunk_frame = receive_frame(*connection, stream);
+            if (chunk_frame.type != P2pMessageType::block_transactions ||
+                chunk_frame.request_id != request_id ||
+                !coordinator.accepts_from(identifier, 1U, 0U))
+                throw std::runtime_error("unexpected block response");
+            const auto chunk = decode_block_transaction_chunk(
+                chunk_frame.payload, limits);
+            if (!chunk) throw std::runtime_error("invalid block response chunk");
+            coordinator.record_useful(chunk_frame.payload.size());
+            completed = download.add_chunk(*chunk);
+            if (completed.error != CompactDownloadError::none)
+                throw std::runtime_error("compact block reconstruction failed");
+        }
+        if (node.submit(*completed.block, expected_header.timestamp).error !=
+                LocalNodeError::none)
+            throw std::runtime_error("locally reconstructed block was rejected");
+        coordinator.complete(identifier);
+        ++request_id;
     }
-    if (node.submit(*completed.block, 160U).error != LocalNodeError::none)
-        throw std::runtime_error("locally reconstructed block was rejected");
     const auto* tip = node.store().index().active_tip();
-    if (tip == nullptr || tip->height != 1U)
+    if (tip == nullptr || tip->height != target_height)
         throw std::runtime_error("client did not activate synchronized block");
-    std::cout << "SYNCED height=1 tip=" << hash_hex(tip->id) << std::endl;
+    std::cout << "SYNCED height=" << target_height
+              << " useful_bytes=" << coordinator.accounting().useful_bytes
+              << " tip=" << hash_hex(tip->id) << std::endl;
 }
 
 void usage(const char* program) {
     std::cerr << "Usage: " << program
               << " --role server|client --data PATH --port PORT"
-                 " [--peers COUNT] [--nonce VALUE]\n";
+                 " [--peers COUNT] [--nonce VALUE] [--blocks HEIGHT]\n";
 }
 
 } // namespace
@@ -263,6 +353,7 @@ int main(int argc, char** argv) {
         std::uint16_t port = 0U;
         unsigned peers = 2U;
         std::uint64_t nonce = 20'000U;
+        Height blocks = 3U;
         for (int i = 1; i < argc; ++i) {
             const std::string argument = argv[i];
             if (argument == "--role" && i + 1 < argc) role = argv[++i];
@@ -276,6 +367,9 @@ int main(int argc, char** argv) {
                 peers = static_cast<unsigned>(std::stoul(argv[++i]));
             } else if (argument == "--nonce" && i + 1 < argc) {
                 nonce = std::stoull(argv[++i]);
+            } else if (argument == "--blocks" && i + 1 < argc) {
+                blocks = std::stoull(argv[++i]);
+                if (blocks == 0U) throw std::invalid_argument("invalid block count");
             } else {
                 throw std::invalid_argument("unknown or incomplete argument");
             }
@@ -284,8 +378,8 @@ int main(int argc, char** argv) {
             throw std::invalid_argument("required argument missing");
         SocketRuntime runtime;
         if (!runtime.ready()) throw std::runtime_error("socket runtime failed");
-        if (role == "server") run_server(data, port, peers);
-        else run_client(data, port, nonce);
+        if (role == "server") run_server(data, port, peers, blocks);
+        else run_client(data, port, nonce, blocks);
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "ERROR: " << error.what() << '\n';

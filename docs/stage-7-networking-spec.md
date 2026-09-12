@@ -1,9 +1,9 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
 Status: protocol engine, nonblocking TCP primitives, live loopback relay,
-three-process synchronization and deterministic multi-node harness implemented;
-production peer event loop, encrypted transport and independent-machine testing
-remain open
+three-process synchronization, live headers-first validation, single-owner
+download coordination and resumable chunk checkpoints implemented; production
+peer event loop, encrypted transport and independent-machine testing remain open
 
 ## Purpose
 
@@ -122,12 +122,25 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
 - A deterministic three-node harness with isolated databases, different
   mempool overlap, independent block validation, convergence and restart.
 - A real three-process loopback harness: one node mines and serves a compact
-  block, two separately persisted nodes handshake, request missing indexes,
-  reconstruct and independently validate the same block, then a restarted node
-  proves durable tip recovery. Each repeat uses isolated evidence files.
+  multi-height chain, two separately persisted nodes exchange locators, validate
+  its header chain, request only then the missing transactions, reconstruct and
+  independently validate each block, then a restarted node proves durable tip
+  recovery. Each repeat uses isolated evidence files.
 - A mini-node retention engine that preserves all headers and local header-chain
   commitments while retaining a bounded recent body window. Checkpoints are
   local commitments, not trusted or signed network checkpoints.
+- Canonical bounded header locator and header-batch encodings. A batch is
+  validated atomically for linkage, height, median time, future time, target,
+  proof of work and accumulated-work overflow before it can change the best
+  header tip. The default 1,600-header batch remains below a 256 KiB frame.
+- One active peer lease per block download with expiry/failover, plus cross-peer
+  transaction-request deduplication. Duplicate or late peers cannot silently
+  create parallel 16 MiB downloads.
+- Out-of-order resumable transaction chunks with bounded checkpoint encoding,
+  exact duplicate idempotence, conflicting-duplicate rejection and missing
+  sequence discovery. Corrupt checkpoints restore atomically or not at all.
+- Bandwidth accounting separates useful, duplicate, avoided-duplicate and
+  resumed bytes without recording private transaction contents.
 
 The 1,800-transaction benchmark (9,173 encoded bytes per transaction) measured
 the following block-relay phase. These figures exclude the earlier transaction
@@ -142,9 +155,8 @@ gossip that populated each peer's mempool:
 
 This checkpoint does not complete Stage 7. A production event loop around the
 nonblocking sockets, authenticated encrypted transport, persisted peer
-discovery, multi-height headers-first synchronization, independent-machine
-testing and the sustained ten-minute private-transaction gate are still
-required. The
+discovery, independent-machine testing and the sustained ten-minute
+private-transaction gate are still required. The
 cross-platform code is structured for Winsock and links `ws2_32`, but Windows
 execution remains a required CI/hardware gate.
 

@@ -11,7 +11,7 @@ server_db="$evidence_dir/server.db"
 node_b_db="$evidence_dir/node-b.db"
 node_c_db="$evidence_dir/node-c.db"
 
-"$binary" --role server --data "$server_db" --port "$port" --peers 2 \
+"$binary" --role server --data "$server_db" --port "$port" --peers 2 --blocks 3 \
   >"$evidence_dir/server.log" 2>&1 &
 server_pid=$!
 
@@ -22,10 +22,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$binary" --role client --data "$node_b_db" --port "$port" --nonce 20001 \
+"$binary" --role client --data "$node_b_db" --port "$port" --nonce 20001 --blocks 3 \
   >"$evidence_dir/node-b.log" 2>&1 &
 node_b_pid=$!
-"$binary" --role client --data "$node_c_db" --port "$port" --nonce 20002 \
+"$binary" --role client --data "$node_c_db" --port "$port" --nonce 20002 --blocks 3 \
   >"$evidence_dir/node-c.log" 2>&1 &
 node_c_pid=$!
 
@@ -43,9 +43,9 @@ if [[ -z "$server_tip" || "$server_tip" != "$node_b_tip" ||
   exit 1
 fi
 
-"$binary" --role client --data "$node_b_db" --port "$port" --nonce 20003 \
+"$binary" --role client --data "$node_b_db" --port "$port" --nonce 20003 --blocks 3 \
   >"$evidence_dir/node-b-restart.log" 2>&1
-if ! grep -q '^RECOVERED height=1 tip=' "$evidence_dir/node-b-restart.log"; then
+if ! grep -q '^RECOVERED height=3 tip=' "$evidence_dir/node-b-restart.log"; then
   echo "restart recovery failed" >&2
   exit 1
 fi
