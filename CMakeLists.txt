@@ -31,8 +31,10 @@ add_executable(onuros_private_tps_benchmark apps/private_tps_benchmark.cpp)
 target_link_libraries(onuros_private_tps_benchmark PRIVATE onuros_core)
 add_executable(onuros_stage7_bandwidth_benchmark apps/stage7_bandwidth_benchmark.cpp)
 target_link_libraries(onuros_stage7_bandwidth_benchmark PRIVATE onuros_core)
+add_executable(onuros_stage7_network_node apps/stage7_network_node.cpp)
+target_link_libraries(onuros_stage7_network_node PRIVATE onuros_core)
 
-foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark)
+foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node)
   set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
@@ -74,6 +76,10 @@ add_test(NAME private_mempool COMMAND private_mempool_test)
 add_test(NAME private_block COMMAND private_block_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
+add_test(NAME stage7_three_process COMMAND bash
+         ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
+         $<TARGET_FILE:onuros_stage7_network_node>
+         ${CMAKE_CURRENT_BINARY_DIR}/stage7-three-process)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   add_test(NAME private_node_orchard_pipeline
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-private-node-orchard-test.sh

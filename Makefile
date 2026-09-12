@@ -2,11 +2,13 @@ CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
 TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test block_transfer_test stage7_relay_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test
 
-.PHONY: all node benchmark bandwidth-benchmark test sanitize clean
+.PHONY: all node network-node benchmark bandwidth-benchmark test sanitize clean
 
 all: node
 
 node: build/onuros-local-node
+
+network-node: build/onuros-stage7-network-node
 
 benchmark: build/onuros-private-tps-benchmark
 
@@ -27,6 +29,10 @@ build/onuros-stage7-bandwidth-benchmark: apps/stage7_bandwidth_benchmark.cpp
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
 
+build/onuros-stage7-network-node: apps/stage7_network_node.cpp
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
+
 build/%_test: tests/%_test.cpp
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
@@ -42,4 +48,4 @@ sanitize:
 	done
 
 clean:
-	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark
+	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark

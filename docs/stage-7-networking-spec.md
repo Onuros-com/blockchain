@@ -1,8 +1,9 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
-Status: protocol engine, nonblocking TCP primitives, live loopback relay and
-deterministic multi-node harness implemented; production peer event loop,
-encrypted transport and independent-machine testing remain open
+Status: protocol engine, nonblocking TCP primitives, live loopback relay,
+three-process synchronization and deterministic multi-node harness implemented;
+production peer event loop, encrypted transport and independent-machine testing
+remain open
 
 ## Purpose
 
@@ -120,6 +121,10 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   consistent manifests, byte/count ceilings and transaction-ID verification.
 - A deterministic three-node harness with isolated databases, different
   mempool overlap, independent block validation, convergence and restart.
+- A real three-process loopback harness: one node mines and serves a compact
+  block, two separately persisted nodes handshake, request missing indexes,
+  reconstruct and independently validate the same block, then a restarted node
+  proves durable tip recovery. Each repeat uses isolated evidence files.
 - A mini-node retention engine that preserves all headers and local header-chain
   commitments while retaining a bounded recent body window. Checkpoints are
   local commitments, not trusted or signed network checkpoints.
@@ -137,8 +142,9 @@ gossip that populated each peer's mempool:
 
 This checkpoint does not complete Stage 7. A production event loop around the
 nonblocking sockets, authenticated encrypted transport, persisted peer
-discovery, live multi-process synchronization, independent-machine testing and
-the sustained ten-minute private-transaction gate are still required. The
+discovery, multi-height headers-first synchronization, independent-machine
+testing and the sustained ten-minute private-transaction gate are still
+required. The
 cross-platform code is structured for Winsock and links `ws2_32`, but Windows
 execution remains a required CI/hardware gate.
 
