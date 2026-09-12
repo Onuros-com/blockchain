@@ -2,7 +2,7 @@ name: Local blockchain core
 
 on:
   push:
-    branches: [main, local-blockchain, private-transactions, "stage-7/**"]
+    branches: [main, local-blockchain, private-transactions, "stage-4/**", "stage-7/**"]
   pull_request:
     paths:
       - "apps/**"
