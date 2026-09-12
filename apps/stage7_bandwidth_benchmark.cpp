@@ -1,6 +1,8 @@
+#include "onuros/block_validation.hpp"
 #include "onuros/stage7_relay.hpp"
 
 #include <cstddef>
+#include <chrono>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -18,6 +20,7 @@ int main() {
         block.header.version = 7U;
         block.header.height = 1U;
         block.header.timestamp = 1'800'000'000ULL;
+        block.header.compact_target = 0x207fffffU;
         block.transactions.reserve(transaction_count);
         for (std::size_t i = 0U; i < transaction_count; ++i) {
             std::vector<std::uint8_t> body(transaction_body_bytes, 0U);
@@ -26,8 +29,54 @@ int main() {
             block.transactions.push_back({2U, std::move(body)});
         }
         block.header.transactions_root = transaction_root(block.transactions);
-        if (encode_block(block).size() > max_serialized_block_bytes)
+        const auto encoded_block_bytes = encode_block(block).size();
+        if (encoded_block_bytes > max_serialized_block_bytes)
             throw std::runtime_error("benchmark block exceeds consensus ceiling");
+
+        const auto started = std::chrono::steady_clock::now();
+        ValidatedRelayPool pool(transaction_count, max_serialized_block_bytes);
+        BlockChunkLimits chunk_limits;
+        chunk_limits.maximum_chunk_bytes = chunk_bytes;
+        chunk_limits.maximum_transactions_per_chunk = 64U;
+        chunk_limits.maximum_transaction_body_bytes = 16U * 1024U;
+        chunk_limits.maximum_total_chunks = 128U;
+        chunk_limits.maximum_total_transactions = transaction_count;
+        chunk_limits.maximum_total_transfer_bytes = max_serialized_block_bytes;
+        CompactDownloadResult immediate;
+        CompactBlockDownload download(make_compact_block_announcement(block),
+            pool, chunk_limits, [](const TransactionEnvelope& transaction) {
+                return transaction.version == 2U &&
+                       transaction.body.size() == transaction_body_bytes;
+            });
+        const auto request = download.start(immediate);
+        if (!request || immediate.error != CompactDownloadError::none)
+            throw std::runtime_error("benchmark missing set was not created");
+        const auto chunks = make_block_transaction_chunks(
+            block, request->indexes, chunk_bytes);
+        if (!chunks) throw std::runtime_error("benchmark chunking failed");
+        CompactDownloadResult completed;
+        for (const auto& chunk : *chunks) {
+            completed = download.add_chunk(chunk);
+            if (completed.error != CompactDownloadError::none)
+                throw std::runtime_error("benchmark reconstruction failed");
+        }
+        if (!completed.block || encode_block(*completed.block) != encode_block(block))
+            throw std::runtime_error("benchmark block mismatch");
+        const BlockValidationLimits validation_limits{
+            7U, 2U, max_serialized_block_bytes, 4096U, 16U * 1024U};
+        const BlockContext context{1U, {}, 0U, 1'800'000'000ULL, 0U,
+                                   0x207fffffU};
+        if (validate_block(*completed.block, validation_limits, context,
+                [](const BlockHeader&) { return true; }) !=
+                BlockValidationError::none)
+            throw std::runtime_error("benchmark full validation failed");
+        const auto elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - started).count();
+        std::cout << "local_block_limit_gate=PASS"
+                  << " block_bytes=" << encoded_block_bytes
+                  << " chunks=" << chunks->size()
+                  << " reconstruction_validation_seconds=" << std::fixed
+                  << std::setprecision(6) << elapsed << '\n';
 
         std::cout << "Onuros Stage 7 compact-relay bandwidth benchmark\n"
                   << "transactions=" << transaction_count
