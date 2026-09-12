@@ -160,12 +160,15 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   malformed-peer isolation, traffic counters and clean shutdown. Its transport
   interface admits TLS only after the cryptographic handshake has completed;
   the protocol handshake can require that authenticated state.
-- A fail-closed node admission adapter now places every decoded private
-  transaction through the ordinary private mempool verifier before adding it to
-  bounded relay state. Relay-capacity failure rolls back the mempool insertion;
-  invalid, duplicate and conflicting transactions never reach relay state.
-  Blocks can enter only through an injected full-node admission callback.
-  Linux, Windows and sanitizer CI cover the boundary and its failure paths.
+- A fail-closed node admission adapter accepts canonical bounded
+  `transactions` frames and places every decoded private transaction through
+  the ordinary private mempool verifier before adding it to bounded relay
+  state. The full frame is decoded before verification; malformed, empty,
+  oversized and trailing-byte payloads fail closed. Multi-transaction admission
+  is atomic: a rejected, duplicate or conflicting member, or exhausted relay
+  capacity, rolls back every earlier member from that frame. Blocks can enter
+  only through an injected full-node admission callback. Linux, Windows and
+  sanitizer CI cover the boundary and its failure paths.
 - Core CI now runs for every Stage 7 branch on both Ubuntu and Windows Server.
   Platform-neutral unit and live socket tests run on Windows; Bash orchestration
   tests remain Linux-only. A green Windows job is required before the Windows
@@ -207,9 +210,11 @@ gossip that populated each peer's mempool:
 | 90% | 1,710,744 | 89.64% |
 | 100% | 57,764 | 99.65% |
 
-This checkpoint does not complete Stage 7. The admission boundary is now
-tested, but live `PeerEventLoop` frame dispatch still must be wired to it. Block
-activation also requires a coordinated durable commit/recovery design across
+This checkpoint does not complete Stage 7. The admission boundary and its
+transaction-frame handler are now tested, but the production executable still
+must construct the real Orchard verifier and attach that handler to its live
+`PeerEventLoop` callback. Block activation also requires a coordinated durable
+commit/recovery design across
 the block database and persistent shielded state before those components are
 connected. Independent-machine testing and the sustained ten-minute unique
 private-transaction gate remain required. The cross-platform code is structured
