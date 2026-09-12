@@ -1,58 +1,54 @@
 # Stage 4 hardware validation status
 
-Stage 4's GPU workers have executed on both NVIDIA and AMD hardware. The pinned
-Onuros CPU KawPoW verifier separately passes consensus vectors and rejection
-tests. The two paths are not yet connected end to end: a GPU-produced nonce and
-mix has not been submitted into the runnable node's CPU verifier.
+Stage 4's physical GPU qualification is complete for its prototype scope. Real
+AMD/OpenCL and NVIDIA/CUDA workers submitted KawPoW nonce and mix candidates
+through the separate-process qualification bridge, and the Onuros node
+independently recomputed each candidate with its pinned CPU verifier.
 
-## NVIDIA evidence
+## Completed NVIDIA evidence
 
-- NVIDIA GeForce RTX 3060, 12 GiB, under Windows/WSL2.
-- NVIDIA Docker runtime exposed CUDA 12.6.3.
-- The KawPoW CUDA miner ran at approximately 18.39 MH/s.
-- The local test endpoint accepted generated solutions.
+- NVIDIA GeForce RTX 3060, 12 GiB, compute capability 8.6.
+- Ubuntu 26.04.1 WSL2 host and Ubuntu 22.04.5 CUDA qualification container.
+- NVIDIA driver 610.62 and CUDA toolkit 12.6.
+- The pinned CUDA worker was compiled for `sm_86`.
+- The node rejected the deliberately invalid first submission and accepted the
+  physical GPU candidate as submission 2.
+- The bridge recorded one accepted share, zero unexpected rejected shares and
+  one expected invalid rejection.
+- A 60-second block-1 benchmark measured 20.592992 MH/s mean and 20.600608
+  MH/s maximum.
 
-## AMD evidence
+## Completed AMD evidence
 
 - AMD Instinct MI300X under Ubuntu 24.04.3.
 - ROCm 7.1.1, OpenCL 2.0 and architecture `gfx942:sramecc+:xnack-`.
 - `amd-smi`, `rocminfo`, `hipcc` and a result-checked HIP kernel passed.
-- The pinned OpenCL KawPoW worker built separately from the Onuros core.
-- A 600-second block-30,000 run sustained 8.772604 MH/s mean and
-  8.786889 MH/s maximum, with one accepted simulated solution.
-- The hardware gate passed without a fatal error, device reset, invalid memory
-  access or thermal shutdown.
+- The node rejected the deliberately invalid first submission and accepted the
+  physical GPU candidate as submission 2.
+- The bridge recorded one accepted share, zero unexpected rejected shares and
+  one expected invalid rejection.
+- A 60-second block-1 benchmark measured 8.588 MH/s mean, 7.880 MH/s minimum
+  and 8.770 MH/s maximum.
+- The pinned external OpenCL worker required a bounded result-count
+  compatibility patch for its fixed result buffer.
 
-The evidence summary and artifact hashes are recorded in
-`docs/evidence/stage4-amd-mi300x-20260912.txt`.
-
-## Consensus checks
+## Consensus boundary
 
 - The published Ravencoin block-30,000 mix and final hashes match.
 - Altered mix, nonce, preimage, target and result inputs are rejected.
-- The local node-admission test persists only the CPU-verified block.
+- A GPU worker never decides consensus: the node retains the block template and
+  independently recomputes every submitted nonce and mix on the CPU.
+- The local node persists only CPU-verified candidates.
 - The GPLv3 reference workers remain outside the Onuros core license boundary.
+- The complete raw physical evidence and hashes are preserved in
+  [Onuros-miner](https://github.com/Onuros-com/Onuros-miner/tree/stage-7/shared-amd-nvidia/evidence).
 
-## Required Stage 7 integration gate
+## Remaining Stage 7 work
 
-Before calling the mining path production-integrated:
-
-- retain the completed fail-closed loopback `onuros_kawpow` endpoint while the
-  general synchronization harness continues using deterministic test work;
-- add authenticated public binding and submission rate limits;
-- submit a GPU-produced nonce and mix from `Onuros-miner`;
-- record CPU-verifier acceptance of the valid candidate and rejection of a
-  deliberately altered candidate; and
-- repeat a short AMD run against that endpoint.
-
-The bounded wire protocol, stale/replay rejection and valid/altered two-process
-loopback tests are implemented. The endpoint now also supports the precise
-qualification sequence of one expected invalid probe followed by one valid
-submission on the same retained job. The separate `Onuros-miner` bridge records
-accepted, unexpected-rejected and expected-invalid counts. Physical AMD and
-NVIDIA runs are still unmarked until their raw artifacts pass that gate. These
-tasks extend Stage 7 without changing the roadmap or invalidating the completed
-standalone MI300X execution evidence.
+Stage 4's loopback integration gate is closed. Stage 7 must still integrate the
+network event loop with the full node's real chain, mempool and shielded state.
+Before independent-machine or public mining, the mining payloads must run over
+authenticated TLS with per-peer and per-address submission limits.
 
 ## Later hardware hardening
 
