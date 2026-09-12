@@ -157,12 +157,17 @@ public:
         return selected;
     }
 
+    bool remove(const Hash256& identifier) {
+        const auto entry = entries_.find(identifier);
+        if (entry == entries_.end()) return false;
+        erase(entry);
+        return true;
+    }
+
     void remove_confirmed(
             const std::vector<TransactionEnvelope>& transactions) {
-        for (const auto& transaction : transactions) {
-            const auto entry = entries_.find(transaction_id(transaction));
-            if (entry != entries_.end()) erase(entry);
-        }
+        for (const auto& transaction : transactions)
+            (void)remove(transaction_id(transaction));
     }
 
     std::size_t revalidate(const ShieldedState& state,
