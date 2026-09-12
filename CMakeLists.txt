@@ -60,6 +60,9 @@ add_executable(onuros_stage7_bandwidth_benchmark apps/stage7_bandwidth_benchmark
 target_link_libraries(onuros_stage7_bandwidth_benchmark PRIVATE onuros_core)
 add_executable(onuros_stage7_network_node apps/stage7_network_node.cpp)
 target_link_libraries(onuros_stage7_network_node PRIVATE onuros_core)
+add_executable(onuros_stage7_private_relay_node
+  apps/stage7_private_relay_node.cpp)
+target_link_libraries(onuros_stage7_private_relay_node PRIVATE onuros_core)
 add_executable(onuros_mining_endpoint apps/mining_endpoint_main.cpp)
 target_link_libraries(onuros_mining_endpoint PRIVATE onuros_core onuros_kawpow)
 if(OpenSSL_FOUND)
@@ -80,7 +83,7 @@ if(OpenSSL_FOUND)
   endif()
 endif()
 
-foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node onuros_mining_endpoint)
+foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node onuros_stage7_private_relay_node onuros_mining_endpoint)
   set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
@@ -140,6 +143,10 @@ if(NOT WIN32)
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
            $<TARGET_FILE:onuros_stage7_network_node>
            ${CMAKE_CURRENT_BINARY_DIR}/stage7-three-process)
+  add_test(NAME stage7_private_relay COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-private-relay.sh
+           $<TARGET_FILE:onuros_stage7_private_relay_node>
+           ${CMAKE_CURRENT_BINARY_DIR}/stage7-private-relay)
   add_test(NAME mining_endpoint_loopback COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-mining-endpoint-loopback.sh
            $<TARGET_FILE:onuros_mining_endpoint>
