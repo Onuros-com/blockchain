@@ -1,0 +1,89 @@
+Test project /home/arazd/onuros-stage7-network/build
+      Start  1: economics
+ 1/42 Test  #1: economics .........................   Passed    0.00 sec
+      Start  2: block_format
+ 2/42 Test  #2: block_format ......................   Passed    0.07 sec
+      Start  3: compact_block_relay
+ 3/42 Test  #3: compact_block_relay ...............   Passed    0.00 sec
+      Start  4: p2p_protocol
+ 4/42 Test  #4: p2p_protocol ......................   Passed    0.00 sec
+      Start  5: p2p_transport
+ 5/42 Test  #5: p2p_transport .....................   Passed    0.07 sec
+      Start  6: peer_manager
+ 6/42 Test  #6: peer_manager ......................   Passed    0.00 sec
+      Start  7: peer_store
+ 7/42 Test  #7: peer_store ........................   Passed    0.00 sec
+      Start  8: peer_event_loop
+ 8/42 Test  #8: peer_event_loop ...................   Passed    0.00 sec
+      Start  9: block_transfer
+ 9/42 Test  #9: block_transfer ....................   Passed    0.00 sec
+      Start 10: stage7_relay
+10/42 Test #10: stage7_relay ......................   Passed    0.00 sec
+      Start 11: stage7_node_admission
+11/42 Test #11: stage7_node_admission .............   Passed    0.00 sec
+      Start 12: stage7_transaction_frame
+12/42 Test #12: stage7_transaction_frame ..........   Passed    0.00 sec
+      Start 13: stage7_orchard_network
+13/42 Test #13: stage7_orchard_network ............   Passed    0.00 sec
+      Start 14: header_sync
+14/42 Test #14: header_sync .......................   Passed    0.00 sec
+      Start 15: download_coordinator
+15/42 Test #15: download_coordinator ..............   Passed    0.00 sec
+      Start 16: mini_node_history
+16/42 Test #16: mini_node_history .................   Passed    0.00 sec
+      Start 17: block_validation
+17/42 Test #17: block_validation ..................   Passed    0.01 sec
+      Start 18: chain_index
+18/42 Test #18: chain_index .......................   Passed    0.00 sec
+      Start 19: difficulty
+19/42 Test #19: difficulty ........................   Passed    0.00 sec
+      Start 20: block_store
+20/42 Test #20: block_store .......................   Passed    0.06 sec
+      Start 21: active_chain
+21/42 Test #21: active_chain ......................   Passed    0.00 sec
+      Start 22: local_node
+22/42 Test #22: local_node ........................   Passed    0.00 sec
+      Start 23: private_admission
+23/42 Test #23: private_admission .................   Passed    0.00 sec
+      Start 24: private_transaction
+24/42 Test #24: private_transaction ...............   Passed    0.00 sec
+      Start 25: private_fuzz
+25/42 Test #25: private_fuzz ......................   Passed    0.14 sec
+      Start 26: orchard_ffi_backend
+26/42 Test #26: orchard_ffi_backend ...............   Passed    0.00 sec
+      Start 27: persistent_shielded_state
+27/42 Test #27: persistent_shielded_state .........   Passed    0.00 sec
+      Start 28: private_reward
+28/42 Test #28: private_reward ....................   Passed    0.00 sec
+      Start 29: private_mempool
+29/42 Test #29: private_mempool ...................   Passed    0.00 sec
+      Start 30: private_block
+30/42 Test #30: private_block .....................   Passed    0.00 sec
+      Start 31: private_node_commit
+31/42 Test #31: private_node_commit ...............   Passed    0.00 sec
+      Start 32: kawpow
+32/42 Test #32: kawpow ............................   Passed    0.59 sec
+      Start 33: mining_endpoint
+33/42 Test #33: mining_endpoint ...................   Passed    0.30 sec
+      Start 34: local_node_cli
+34/42 Test #34: local_node_cli ....................   Passed    0.01 sec
+      Start 35: stage7_block_limit
+35/42 Test #35: stage7_block_limit ................   Passed    0.62 sec
+      Start 36: amd_kawpow_log_parser
+36/42 Test #36: amd_kawpow_log_parser .............   Passed    0.02 sec
+      Start 37: stage7_performance_manifest
+37/42 Test #37: stage7_performance_manifest .......   Passed    0.07 sec
+      Start 38: stage7_three_process
+38/42 Test #38: stage7_three_process ..............   Passed    0.07 sec
+      Start 39: stage7_private_relay
+39/42 Test #39: stage7_private_relay ..............   Passed    0.05 sec
+      Start 40: mining_endpoint_loopback
+40/42 Test #40: mining_endpoint_loopback ..........   Passed    1.83 sec
+      Start 41: stage7_mutual_tls
+41/42 Test #41: stage7_mutual_tls .................   Passed    0.17 sec
+      Start 42: stage7_independent_tls_loopback
+42/42 Test #42: stage7_independent_tls_loopback ...   Passed    0.66 sec
+
+100% tests passed, 0 tests failed out of 42
+
+Total Test time (real) =   4.80 sec
