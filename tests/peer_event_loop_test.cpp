@@ -159,6 +159,38 @@ int main() {
               policy_loop.stats().policy_disconnects == 1U,
               "frame policy disconnects offending peer");
 
+        PeerEventLoopLimits flood_limits = limits;
+        flood_limits.maximum_read_bytes_per_tick = 4096U;
+        flood_limits.maximum_frames_per_tick = 2U;
+        PeerEventLoop flood_loop(flood_limits);
+        auto flood_transport = std::make_unique<FakeTransport>();
+        flood_transport->maximum_io = 4096U;
+        flood_transport->incoming = peer_input(800U);
+        for (std::uint64_t request = 3U; request < 13U; ++request) {
+            const auto ping = encode_p2p_frame({stage7_protocol_version,
+                P2pMessageType::ping, request, {8U}});
+            flood_transport->incoming.insert(flood_transport->incoming.end(),
+                                             ping.begin(), ping.end());
+        }
+        check(flood_loop.add_peer(13U, std::move(flood_transport),
+                                  policy(801U), 0U) == PeerLoopError::none,
+              "flooding peer added");
+        std::size_t flood_callbacks = 0U;
+        const auto count_flood_frame =
+            [&flood_callbacks](EventPeerId, const P2pFrame&) {
+                ++flood_callbacks;
+            };
+        flood_loop.tick(1U, count_flood_frame);
+        check(flood_callbacks == 2U &&
+              flood_loop.stats().received_frames == 2U &&
+              flood_loop.peer_count() == 1U,
+              "per-tick frame budget bounds a queued frame flood");
+        for (std::uint64_t tick = 2U; tick < 7U; ++tick)
+            flood_loop.tick(tick, count_flood_frame);
+        check(flood_callbacks == 11U &&
+              flood_loop.stats().received_frames == 11U,
+              "bounded flood processing makes deterministic progress");
+
         PeerEventLoopLimits queue_limits = limits;
         queue_limits.resources.maximum_queued_bytes = 60U;
         PeerEventLoop queue_loop(queue_limits);
