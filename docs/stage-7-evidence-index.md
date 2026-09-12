@@ -24,8 +24,11 @@ audit points.
 - Core workflow run
   [34704080168](https://github.com/Onuros-com/blockchain/actions/runs/34704080168)
   at commit `3b8b418fff4b79d90506b6e1bfd3cf8c8d9cf7d8`: all four jobs
-  passed. Ubuntu included the near-limit block gate and independent-mode TLS
-  loopback gate. Windows compiled and executed the portable suite. Sanitizers
+  passed. Ubuntu included the first near-limit reconstruction gate and the
+  independent-mode TLS loopback gate. Commit
+  `94d032cbe58b5fd9a5053309b1bef049c7efe1bd` tightens the block fixture to the
+  specified 99%--100% size window; its workflow result must be attached before
+  audit acceptance. Windows compiled and executed the portable suite. Sanitizers
   and the pinned real-Orchard admission job passed.
 - Core workflow run
   [34703534941](https://github.com/Onuros-com/blockchain/actions/runs/34703534941)
