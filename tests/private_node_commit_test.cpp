@@ -77,7 +77,7 @@ void solve(Block& block, const Target256& pow_limit) {
 
 Block add_genesis(LocalNode& node, const Target256& pow_limit,
                   const Hash256& initial_root) {
-    auto candidate = node.make_candidate({{1U, {1U}}}, 100U);
+    auto candidate = node.make_candidate({{2U, {1U}}}, 100U);
     check(candidate.has_value(), "genesis candidate created");
     candidate->header.shielded_root = initial_root;
     solve(*candidate, pow_limit);
