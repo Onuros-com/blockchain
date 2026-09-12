@@ -167,8 +167,12 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   oversized and trailing-byte payloads fail closed. Multi-transaction admission
   is atomic: a rejected, duplicate or conflicting member, or exhausted relay
   capacity, rolls back every earlier member from that frame. Blocks can enter
-  only through an injected full-node admission callback. Linux, Windows and
-  sanitizer CI cover the boundary and its failure paths.
+  only through an injected full-node admission callback. A production
+  composition object owns the Orchard FFI backend, canonical private verifier,
+  mempool and relay cache, and exposes a callback compatible with
+  `PeerEventLoop`. Linux, Windows and sanitizer CI cover the boundary and its
+  failure paths. A separate Linux CI job builds the pinned Rust Orchard library,
+  links it into C++, and runs the real private-node pipeline.
 - Core CI now runs for every Stage 7 branch on both Ubuntu and Windows Server.
   Platform-neutral unit and live socket tests run on Windows; Bash orchestration
   tests remain Linux-only. A green Windows job is required before the Windows
@@ -210,10 +214,11 @@ gossip that populated each peer's mempool:
 | 90% | 1,710,744 | 89.64% |
 | 100% | 57,764 | 99.65% |
 
-This checkpoint does not complete Stage 7. The admission boundary and its
-transaction-frame handler are now tested, but the production executable still
-must construct the real Orchard verifier and attach that handler to its live
-`PeerEventLoop` callback. Block activation also requires a coordinated durable
+This checkpoint does not complete Stage 7. The admission boundary,
+transaction-frame handler and real-Orchard ownership composition are now
+tested, but the production executable still must attach the composition's
+handler to its live `PeerEventLoop` and define peer-level rejection policy.
+Block activation also requires a coordinated durable
 commit/recovery design across
 the block database and persistent shielded state before those components are
 connected. Independent-machine testing and the sustained ten-minute unique
