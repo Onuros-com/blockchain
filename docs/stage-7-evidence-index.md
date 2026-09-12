@@ -14,7 +14,7 @@ audit points.
 | 3. Restart and late synchronization | Three-process gate restarts a persisted client and checks height/tip recovery; state coordinator tests recover shielded state | Automated gate passed |
 | 4. Competing branches converge by work | Chain-index tests and private commit coordinator tests cover a stronger-branch reorganization and restart after the block database switches | Automated gate passed |
 | 5. Malformed, oversized and flooding traffic remains bounded | Frame decoder, event loop, admission, block transfer, fuzz, per-tick flood, sanitizer, and peer-policy tests in run 34704080168 | Automated gate passed |
-| 6. 100 unique valid private transactions/s for 600 s across three published nodes | Real Orchard fixture verification sustained 120.218/s for 600.033 s; deterministic three-process relay passed for one transaction | Pending: existing results do not prove 60,000 distinct valid transactions or published-node convergence |
+| 6. 100 unique valid private transactions/s for 600 s across three published nodes | Real Orchard fixture verification sustained 120.218/s for 600.033 s; the real-FFI/TLS load executable and common-anchor corpus generator are implemented | Tooling implemented; physical 66,000-transaction run pending |
 | 7. Near-16 MiB block propagation and validation | `stage7_block_limit` passed in run 34704080168; compact-relay bandwidth benchmark recorded | In-process safety gate passed; independent-node latency and durable shielded activation pending |
 | 8. Crash-safe shutdown, restart and synchronization | Checksummed commit journal, durable ordering, corrupt-journal rejection, reorg recovery, event-loop clean shutdown | Automated gate passed |
 | 9. Protocol, threat model, operator procedure and raw evidence | Networking specification, recovery design, threat model, independent TLS runbook, performance qualification, and GCP verifier log are committed | Documentation present; physical Gate 6/7 evidence pending |
@@ -48,6 +48,15 @@ Workflow run numbers are GitHub-generated identifiers. The immutable source
 commit and test output must be reviewed together.
 
 ## Physical and external evidence
+
+### Independent mutual TLS
+
+`evidence/stage7-tls-rtx4070-2026-09-12` records a source-restricted physical
+TLS 1.3 exchange between the GCP origin and an RTX 4070 observer. Both peers
+verified certificate identity and recorded `TLS_AES_256_GCM_SHA384`; the
+evidence contains no private key. The RTX 4070 full 42-test qualification at
+commit `6bbbd01b3a007ae02f34b83b3e6a1bfd8ba02e97` is stored in
+`evidence/stage7-rtx4070-suite-2026-09-12`.
 
 ### Orchard verification duration
 
@@ -88,6 +97,11 @@ replace Stage 7 network Gates 6 or 7.
 - `core/include/onuros/private_node_commit.hpp`: block/shielded-state journal,
   commit ordering, reorganization and recovery.
 - `apps/stage7_private_relay_node.cpp`: three-process private relay harness.
+- `apps/stage7_private_load_node.cpp`: physical real-Orchard, mutual-TLS relay
+  load executable with origin, relay and observer roles.
+- `scripts/generate-stage7-private-corpus.sh`: non-overwriting generator for
+  common-anchor, distinct valid Orchard transactions.
+- `docs/stage-7-private-relay-runbook.md`: physical Gate 6 operating procedure.
 - `core/include/onuros/peer_event_loop.hpp`: bounded multi-peer event loop and
   policy enforcement.
 - `apps/stage7_bandwidth_benchmark.cpp`: compact-relay accounting and
@@ -97,11 +111,9 @@ replace Stage 7 network Gates 6 or 7.
 
 ## Evidence still required
 
-1. Server and client TLS manifests from two independent machines using the
-   documented peer-name and source-firewall restrictions.
-2. Three-node, 600-second manifests for at least 60,000 distinct transactions
+1. Three-node, 600-second manifests for at least 60,000 distinct transactions
    that pass the real Orchard verifier.
-3. Published-node near-limit block logs showing canonical size, mempool overlap,
+2. Published-node near-limit block logs showing canonical size, mempool overlap,
    transfer bytes, independent validation, durable activation, restart state,
    and no more than 30.000 seconds per receiver.
-4. Reviewer audit points and their resolution links.
+3. Reviewer audit points and their resolution links.

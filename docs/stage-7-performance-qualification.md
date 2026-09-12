@@ -118,6 +118,15 @@ gate.
 ownership, and convergence with a deterministic verifier. It does not satisfy
 the distinct-real-proof requirement.
 
+`onuros_stage7_private_load_node` is the physical Gate 6 executable. It uses
+mutual TLS, the pinned Orchard FFI, parallel proof verification, ordered atomic
+mempool admission and streaming backpressure across origin, relay and observer
+roles. `private_verify_benchmark --generate-corpus` creates the common-anchor,
+distinct-proof input outside the measured interval. The four supporting
+scripts build the executable, generate the corpus, run a real-FFI loopback
+smoke test and capture key-free host evidence. See
+`stage-7-private-relay-runbook.md` for the physical procedure.
+
 ## Evidence manifest
 
 For both physical gates, preserve:

@@ -188,4 +188,12 @@ if(ONUROS_ORCHARD_FFI_LIBRARY)
            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-private-node-orchard-test.sh
                    ${CMAKE_CURRENT_SOURCE_DIR}/crypto/orchard-ffi/target/release/private_verify_benchmark
                    $<TARGET_FILE:private_node_orchard_pipeline_test>)
+  if(OpenSSL_FOUND AND NOT WIN32)
+    add_test(NAME stage7_private_load_loopback COMMAND bash
+      ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-private-load-loopback.sh
+      $<TARGET_FILE:onuros_stage7_private_load_node>
+      ${CMAKE_CURRENT_SOURCE_DIR}/crypto/orchard-ffi/target/release/private_verify_benchmark
+      ${CMAKE_CURRENT_BINARY_DIR}/stage7-private-load)
+    set_tests_properties(stage7_private_load_loopback PROPERTIES TIMEOUT 900)
+  endif()
 endif()
