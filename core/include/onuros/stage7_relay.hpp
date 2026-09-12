@@ -40,6 +40,14 @@ public:
         return true;
     }
 
+    bool forget_validated(const Hash256& identifier) {
+        const auto found = transactions_.find(identifier);
+        if (found == transactions_.end()) return false;
+        bytes_ -= encode_transaction(found->second).size();
+        transactions_.erase(found);
+        return true;
+    }
+
     std::vector<Hash256> missing(const std::vector<Hash256>& inventory,
                                  std::size_t maximum_result) const {
         std::vector<Hash256> result;
