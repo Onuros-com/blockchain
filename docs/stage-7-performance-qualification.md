@@ -104,7 +104,7 @@ latency.
 
 ## Automated supporting gates
 
-`onuros_stage7_bandwidth_benchmark` builds a 16.5 MB block, transfers all
+`onuros_stage7_bandwidth_benchmark` builds a block above 99% of the 16 MiB ceiling, transfers all
 missing transactions through bounded compact-block chunks, reconstructs the
 exact encoding, and runs full structural and contextual validation. CI records
 this as `stage7_block_limit`. It is an in-process safety and regression gate,
