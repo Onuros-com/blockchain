@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -314,7 +315,8 @@ int main() {
         recover_durable_block();
         reject_corrupt_journal();
         return 0;
-    } catch (...) {
+    } catch (const std::exception& error) {
+        std::cerr << "FAIL: " << error.what() << '\\n';
         return 1;
     }
 }
