@@ -72,16 +72,19 @@ class PrivateMempool {
 public:
     explicit PrivateMempool(PrivateMempoolLimits limits) : limits_(limits) {}
 
-    PrivateMempoolResult add(const TransactionEnvelope& transaction,
-                             const ShieldedState& state,
-                             const PrivateTransactionVerifier& verifier) {
+    // Commits effects produced by the configured proof verifier. This split is
+    // used by the network admission path to verify independent transactions in
+    // parallel, then serialize all conflict and capacity checks here.
+    PrivateMempoolResult add_verified(
+            const TransactionEnvelope& transaction,
+            VerifiedPrivateEffects effects,
+            const ShieldedState& state) {
         const auto id = transaction_id(transaction);
         if (entries_.find(id) != entries_.end())
             return {PrivateMempoolError::duplicate_transaction};
         const auto encoded_bytes = 8U + transaction.body.size();
         if (transaction.body.size() > limits_.max_transaction_bytes)
             return {PrivateMempoolError::transaction_too_large};
-        auto effects = verifier.verify(transaction);
         if (effects.error != PrivateProofError::none)
             return {PrivateMempoolError::verification_failed, effects.error};
         if (effects.nullifiers.empty() || effects.commitments.empty())
@@ -127,6 +130,12 @@ public:
         entries_.emplace(id, Entry{transaction, std::move(effects),
                                    encoded_bytes, next_sequence_++});
         return {};
+    }
+
+    PrivateMempoolResult add(const TransactionEnvelope& transaction,
+                             const ShieldedState& state,
+                             const PrivateTransactionVerifier& verifier) {
+        return add_verified(transaction, verifier.verify(transaction), state);
     }
 
     std::vector<TransactionEnvelope> select(

@@ -1,6 +1,10 @@
 #include "onuros/stage7_node_admission.hpp"
 
+#include <chrono>
 #include <cstdlib>
+#include <mutex>
+#include <set>
+#include <thread>
 
 namespace {
 using namespace onuros;
@@ -35,6 +39,32 @@ public:
         return {PrivateProofError::none, anchor_,
                 {value(100U + candidate.body[1])},
                 {value(200U + candidate.body[0])}, 1};
+    }
+};
+
+class ThreadRecordingVerifier final : public PrivateTransactionVerifier {
+    Hash256 anchor_;
+    mutable std::mutex mutex_;
+    mutable std::set<std::thread::id> threads_;
+
+public:
+    explicit ThreadRecordingVerifier(Hash256 anchor) : anchor_(anchor) {}
+
+    VerifiedPrivateEffects verify(
+            const TransactionEnvelope& candidate) const override {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            threads_.insert(std::this_thread::get_id());
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return {PrivateProofError::none, anchor_,
+                {value(300U + candidate.body[1])},
+                {value(400U + candidate.body[0])}, 1};
+    }
+
+    std::size_t thread_count() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return threads_.size();
     }
 };
 
@@ -113,5 +143,22 @@ int main() {
     check(metrics.transactions_relay_rejected == 1U);
     check(metrics.blocks_accepted == 1U);
     check(metrics.blocks_rejected == 1U);
+
+    ThreadRecordingVerifier parallel_verifier(root);
+    PrivateMempool parallel_mempool({16U, 4096U, 16U, 64U, 2U});
+    ValidatedRelayPool parallel_relay(16U, 4096U);
+    Stage7NodeAdmission parallel(
+        state, parallel_verifier, parallel_mempool, parallel_relay);
+    std::vector<TransactionEnvelope> batch;
+    for (std::uint8_t selector = 10U; selector < 18U; ++selector)
+        batch.push_back(transaction(selector));
+    const P2pFrame batch_frame{
+        stage7_protocol_version, P2pMessageType::transactions, 50U,
+        encode_network_transactions(batch)};
+    const auto parallel_result = parallel.admit_frame_parallel(batch_frame, 4U);
+    check(parallel_result.accepted_transactions == batch.size());
+    check(parallel_mempool.size() == batch.size() &&
+          parallel_relay.size() == batch.size());
+    check(parallel_verifier.thread_count() > 1U);
     return 0;
 }

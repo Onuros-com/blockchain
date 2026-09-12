@@ -14,6 +14,7 @@ incrementalmerkletree = "0.8.2"
 nonempty = "0.11"
 orchard = { git = "https://github.com/zcash/orchard.git", rev = "f2be3a479837df6583110fd44e124d155ec592ee", features = ["test-dependencies"] }
 rand = "0.8"
+sha2 = "0.10.9"
 
 [dev-dependencies]
 proptest = "1.6"

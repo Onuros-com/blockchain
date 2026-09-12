@@ -84,6 +84,21 @@ if(OpenSSL_FOUND)
       target_link_options(${target} PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all)
     endif()
   endforeach()
+  if(ONUROS_ORCHARD_FFI_LIBRARY)
+    add_executable(onuros_stage7_private_load_node
+      apps/stage7_private_load_node.cpp)
+    target_link_libraries(onuros_stage7_private_load_node PRIVATE
+      onuros_core OpenSSL::SSL OpenSSL::Crypto)
+    set_target_properties(onuros_stage7_private_load_node PROPERTIES
+      CXX_EXTENSIONS OFF)
+    if(MSVC)
+      target_compile_options(onuros_stage7_private_load_node PRIVATE
+        /W4 /WX /permissive-)
+    else()
+      target_compile_options(onuros_stage7_private_load_node PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    endif()
+  endif()
 endif()
 
 foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node onuros_stage7_private_relay_node onuros_mining_endpoint)

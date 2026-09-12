@@ -49,6 +49,12 @@ int main() {
     Verifier verifier(root);
     PrivateMempool pool(limits());
 
+    check(pool.add_verified(
+              transaction(9U),
+              {PrivateProofError::invalid_signature, {}, {}, {}, 0}, state)
+              .error == PrivateMempoolError::verification_failed);
+    check(pool.size() == 0U);
+
     check(pool.add(transaction(1U), state, verifier).accepted());
     check(pool.add(transaction(1U), state, verifier).error ==
           PrivateMempoolError::duplicate_transaction);

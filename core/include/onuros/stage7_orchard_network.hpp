@@ -68,6 +68,13 @@ public:
         return admission_.admit_frame(frame);
     }
 
+    std::optional<NetworkFrameAdmissionResult> handle_frame_parallel(
+            const P2pFrame& frame, std::size_t workers) {
+        if (frame.type != P2pMessageType::transactions)
+            return std::nullopt;
+        return admission_.admit_frame_parallel(frame, workers);
+    }
+
     std::function<void(EventPeerId, const P2pFrame&)> make_frame_handler(
             FrameObserver observer = {}) {
         return [this, observer = std::move(observer)](

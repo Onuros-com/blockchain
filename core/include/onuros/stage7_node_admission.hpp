@@ -3,12 +3,15 @@
 #include "onuros/private_mempool.hpp"
 #include "onuros/stage7_relay.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -166,6 +169,71 @@ private:
         metrics_.transactions_accepted -= identifiers.size();
     }
 
+    NetworkTransactionAdmissionResult commit_verified_transaction(
+            const TransactionEnvelope& transaction,
+            VerifiedPrivateEffects effects) {
+        const auto admitted = mempool_.add_verified(
+            transaction, std::move(effects), shielded_state_);
+        if (!admitted.accepted()) {
+            ++metrics_.transactions_mempool_rejected;
+            return {NetworkTransactionAdmissionError::mempool_rejected,
+                    admitted};
+        }
+        if (!relay_pool_.remember_validated(transaction)) {
+            (void)mempool_.remove(transaction_id(transaction));
+            ++metrics_.transactions_relay_rejected;
+            return {NetworkTransactionAdmissionError::relay_rejected, {}};
+        }
+        ++metrics_.transactions_accepted;
+        return {};
+    }
+
+    NetworkFrameAdmissionResult commit_verified_frame(
+            const std::vector<TransactionEnvelope>& transactions,
+            std::vector<VerifiedPrivateEffects> effects) {
+        std::vector<Hash256> admitted;
+        admitted.reserve(transactions.size());
+        for (std::size_t i = 0U; i < transactions.size(); ++i) {
+            const auto result = commit_verified_transaction(
+                transactions[i], std::move(effects[i]));
+            if (!result.accepted()) {
+                rollback(admitted);
+                ++metrics_.transaction_frames_rejected;
+                NetworkFrameAdmissionResult rejected;
+                rejected.error =
+                    NetworkFrameAdmissionError::transaction_rejected;
+                rejected.transaction_result = result;
+                rejected.failed_index = i;
+                return rejected;
+            }
+            admitted.push_back(transaction_id(transactions[i]));
+        }
+        ++metrics_.transaction_frames_accepted;
+        NetworkFrameAdmissionResult accepted;
+        accepted.accepted_transactions = admitted.size();
+        return accepted;
+    }
+
+    std::optional<NetworkFrameAdmissionResult> decode_transaction_frame(
+            const P2pFrame& frame,
+            NetworkTransactionBatchDecodeResult& decoded) {
+        if (frame.type != P2pMessageType::transactions) {
+            ++metrics_.transaction_frames_rejected;
+            NetworkFrameAdmissionResult result;
+            result.error = NetworkFrameAdmissionError::unsupported_message;
+            return result;
+        }
+        decoded = decode_network_transactions(frame.payload, batch_limits_);
+        if (!decoded.accepted()) {
+            ++metrics_.transaction_frames_rejected;
+            NetworkFrameAdmissionResult result;
+            result.error = NetworkFrameAdmissionError::invalid_payload;
+            result.decode_error = decoded.error;
+            return result;
+        }
+        return std::nullopt;
+    }
+
 public:
     Stage7NodeAdmission(
             const ShieldedState& shielded_state,
@@ -181,59 +249,46 @@ public:
 
     NetworkTransactionAdmissionResult admit_transaction(
             const TransactionEnvelope& transaction) {
-        const auto admitted =
-            mempool_.add(transaction, shielded_state_, verifier_);
-        if (!admitted.accepted()) {
-            ++metrics_.transactions_mempool_rejected;
-            return {NetworkTransactionAdmissionError::mempool_rejected,
-                    admitted};
-        }
-        if (!relay_pool_.remember_validated(transaction)) {
-            (void)mempool_.remove(transaction_id(transaction));
-            ++metrics_.transactions_relay_rejected;
-            return {NetworkTransactionAdmissionError::relay_rejected, {}};
-        }
-        ++metrics_.transactions_accepted;
-        return {};
+        return commit_verified_transaction(
+            transaction, verifier_.verify(transaction));
     }
 
     NetworkFrameAdmissionResult admit_frame(const P2pFrame& frame) {
-        if (frame.type != P2pMessageType::transactions) {
-            ++metrics_.transaction_frames_rejected;
-            NetworkFrameAdmissionResult result;
-            result.error = NetworkFrameAdmissionError::unsupported_message;
-            return result;
-        }
-        const auto decoded =
-            decode_network_transactions(frame.payload, batch_limits_);
-        if (!decoded.accepted()) {
-            ++metrics_.transaction_frames_rejected;
-            NetworkFrameAdmissionResult result;
-            result.error = NetworkFrameAdmissionError::invalid_payload;
-            result.decode_error = decoded.error;
-            return result;
-        }
+        NetworkTransactionBatchDecodeResult decoded;
+        if (const auto rejected = decode_transaction_frame(frame, decoded))
+            return *rejected;
+        std::vector<VerifiedPrivateEffects> effects;
+        effects.reserve(decoded.transactions.size());
+        for (const auto& transaction : decoded.transactions)
+            effects.push_back(verifier_.verify(transaction));
+        return commit_verified_frame(decoded.transactions, std::move(effects));
+    }
 
-        std::vector<Hash256> admitted;
-        admitted.reserve(decoded.transactions.size());
-        for (std::size_t i = 0U; i < decoded.transactions.size(); ++i) {
-            const auto result = admit_transaction(decoded.transactions[i]);
-            if (!result.accepted()) {
-                rollback(admitted);
-                ++metrics_.transaction_frames_rejected;
-                NetworkFrameAdmissionResult rejected;
-                rejected.error =
-                    NetworkFrameAdmissionError::transaction_rejected;
-                rejected.transaction_result = result;
-                rejected.failed_index = i;
-                return rejected;
-            }
-            admitted.push_back(transaction_id(decoded.transactions[i]));
+    // Proof verification dominates relay admission and is independent for each
+    // member of a decoded frame. Workers only produce immutable effects;
+    // mempool conflict checks and relay insertion remain ordered and atomic.
+    NetworkFrameAdmissionResult admit_frame_parallel(
+            const P2pFrame& frame, std::size_t requested_workers) {
+        NetworkTransactionBatchDecodeResult decoded;
+        if (const auto rejected = decode_transaction_frame(frame, decoded))
+            return *rejected;
+        const auto workers = std::max<std::size_t>(
+            1U, std::min(requested_workers, decoded.transactions.size()));
+        std::vector<VerifiedPrivateEffects> effects(decoded.transactions.size());
+        std::atomic<std::size_t> next{0U};
+        std::vector<std::thread> threads;
+        threads.reserve(workers);
+        for (std::size_t worker = 0U; worker < workers; ++worker) {
+            threads.emplace_back([&] {
+                for (;;) {
+                    const auto index = next.fetch_add(1U);
+                    if (index >= decoded.transactions.size()) break;
+                    effects[index] = verifier_.verify(decoded.transactions[index]);
+                }
+            });
         }
-        ++metrics_.transaction_frames_accepted;
-        NetworkFrameAdmissionResult accepted;
-        accepted.accepted_transactions = admitted.size();
-        return accepted;
+        for (auto& thread : threads) thread.join();
+        return commit_verified_frame(decoded.transactions, std::move(effects));
     }
 
     NetworkBlockAdmissionError admit_block(const Block& block,
