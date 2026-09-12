@@ -1,0 +1,58 @@
+Onuros Stage 7 real Orchard duration gate
+Captured: Sat Sep 12 09:28:06 UTC 2026
+Source commit: 1091e91a4e5097ebafd8e80099eb090945c06699
+
+Hardware and operating system
+-----------------------------
+Google Compute Engine c3d-standard-8, us-central1
+PRETTY_NAME="Ubuntu 26.04.1 LTS"
+Kernel: GNU/Linux 7.0.0-1011-gcp x86_64
+Model name: AMD EPYC 9B14
+Thread(s) per core: 2
+Core(s) per socket: 4
+Socket(s): 1
+Usable memory: 30 GiB
+Swap: 0 B
+
+Command
+-------
+./scripts/run-private-duration-gate.sh 8 600 100
+
+Raw benchmark result
+--------------------
+verified=9002 elapsed_seconds=600.002606835 worker_tps=15.003
+verified=9005 elapsed_seconds=600.002915295 worker_tps=15.008
+verified=8989 elapsed_seconds=600.015719445 worker_tps=14.981
+verified=9057 elapsed_seconds=600.012463535 worker_tps=15.095
+verified=8975 elapsed_seconds=600.007787985 worker_tps=14.958
+verified=9018 elapsed_seconds=600.017356755 worker_tps=15.030
+verified=9014 elapsed_seconds=600.011980325 worker_tps=15.023
+verified=9075 elapsed_seconds=600.009767485 worker_tps=15.125
+gate=real-orchard-verification duration_target=600 verified=72135 workers=8 elapsed_seconds=600.033000000 aggregate_tps=120.218 minimum_tps=100
+
+Resource report
+---------------
+User time (seconds): 4699.36
+System time (seconds): 95.31
+Percent of CPU this job got: 787%
+Elapsed wall-clock time: 10:08.72
+Maximum resident set size (kbytes): 109236
+Major page faults: 1
+Minor page faults: 87147
+Voluntary context switches: 1721339
+Involuntary context switches: 41055172
+Swaps: 0
+Exit status: 0
+
+Evidence integrity
+------------------
+SHA-256 of the original captured benchmark log:
+f7c13dd0ecddaeb6a54e6b91908b1be3a187bef493f318d964556bf4aff53cc3
+
+Qualification
+-------------
+This run repeatedly verified a genuine pinned-Orchard fixture and establishes
+sustained cryptographic verification capacity above 100 verifications per
+second. The fixture has one nullifier. This result is not evidence of 72,135
+unique transaction admissions, three-node relay, settlement throughput or GPU
+execution.

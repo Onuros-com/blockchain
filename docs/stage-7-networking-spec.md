@@ -192,6 +192,18 @@ still requires a separate three-node relay result with unique admitted
 transactions; these measurements must not be combined into a misleading TPS
 number.
 
+The sustained verification portion passed on 12 September 2026 at source
+`1091e91a4e5097ebafd8e80099eb090945c06699`. A Google Compute Engine
+`c3d-standard-8` in `us-central1` ran eight verifier workers on one AMD EPYC
+9B14 socket (four physical cores, eight threads), Ubuntu 26.04.1, 30 GiB usable
+RAM and no swap. It completed 72,135 real Orchard verifications over 600.033
+measured seconds at 120.218 aggregate verifications per second. The process
+exited zero, used 787% CPU and reached 109,236 KiB maximum resident memory. The
+original benchmark log has SHA-256
+`f7c13dd0ecddaeb6a54e6b91908b1be3a187bef493f318d964556bf4aff53cc3`;
+the captured result and its limitations are preserved in
+`docs/evidence/stage7-gcp-orchard-duration-20260912.txt`.
+
 ## Peer and denial-of-service controls
 
 - Maximum inbound/outbound peers and per-IP connection limits.
