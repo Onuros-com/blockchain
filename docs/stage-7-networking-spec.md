@@ -6,9 +6,11 @@ download coordination, resumable chunk checkpoints, persistent peer discovery
 and mutually authenticated TLS 1.3 transport implemented. The bounded multi-peer
 event loop now accepts both raw private-test transports and authenticated TLS;
 a fail-closed full-node admission boundary gates private transactions before
-relay and delegates blocks to full-node validation; the first fail-closed KawPoW
-mining endpoint is implemented on loopback. Coordinated durable block/shielded
-state commits and independent-machine testing remain open
+relay and delegates blocks to full-node validation; invalid transaction traffic
+is scored by the live event loop and disconnects at a bounded threshold. The
+first fail-closed KawPoW mining endpoint is implemented on loopback. Linear-tip
+block/shielded commits have a write-ahead recovery coordinator. Reorganization
+commit recovery and independent-machine testing remain open
 
 ## Purpose
 
@@ -117,7 +119,8 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   request and transaction chunk in both directions.
 - Handshake rejection for wrong chain/genesis, self-connections, incompatible
   versions, missing services and unauthenticated transport when public-mode
-  policy requires it. Transport encryption itself is not yet implemented.
+  policy requires it. Mutual TLS 1.3 is implemented and tested with
+  operator-configured trust roots.
 - Bounded transaction inventory with duplicate suppression.
 - Global/per-address connection ceilings, handshake/idle deadlines, bounded
   queues, request and validation-job backpressure, misbehavior scoring and
@@ -169,9 +172,11 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   capacity, rolls back every earlier member from that frame. Blocks can enter
   only through an injected full-node admission callback. A production
   composition object owns the Orchard FFI backend, canonical private verifier,
-  mempool and relay cache, and exposes a callback compatible with
-  `PeerEventLoop`. Linux, Windows and sanitizer CI cover the boundary and its
-  failure paths. A separate Linux CI job builds the pinned Rust Orchard library,
+  mempool and relay cache. Its peer policy maps malformed payloads, invalid
+  proofs and conflicting transactions to saturating per-peer scores consumed
+  by `PeerEventLoop::tick_with_policy`. Relay-cache exhaustion is treated as
+  local backpressure and receives no peer penalty. Linux, Windows and sanitizer
+  CI cover the boundary, disconnection path and failure cases. A separate Linux CI job builds the pinned Rust Orchard library,
   links it into C++, and runs the real private-node pipeline.
 - Core CI now runs for every Stage 7 branch on both Ubuntu and Windows Server.
   Platform-neutral unit and live socket tests run on Windows; Bash orchestration
@@ -215,14 +220,14 @@ gossip that populated each peer's mempool:
 | 100% | 57,764 | 99.65% |
 
 This checkpoint does not complete Stage 7. The admission boundary,
-transaction-frame handler and real-Orchard ownership composition are now
-tested, but the production executable still must attach the composition's
-handler to its live `PeerEventLoop` and define peer-level rejection policy.
-Block activation also requires a coordinated durable
-commit/recovery design across
-the block database and persistent shielded state before those components are
-connected. Independent-machine testing and the sustained ten-minute unique
-private-transaction gate remain required. The cross-platform code is structured
+transaction-frame handler, real-Orchard ownership composition and event-loop
+peer policy are tested. Production node assembly still must instantiate that
+composition around its live peers. Linear active-tip block activation now has a
+checksummed write-ahead coordinator across the block database and persistent
+shielded state; startup recovery is specified in
+`docs/stage-7-state-commit-recovery.md`. Atomic reorganization recovery,
+independent-machine testing and the sustained ten-minute unique private-
+transaction gate remain required. The cross-platform code is structured
 for Winsock and links `ws2_32`. Windows Server 2022 compilation and execution
 passed in the Stage 7 CI matrix at commit
 `13b30a58c0e63683d3952cedf088dbc57a0ae9a0`; physical Windows hardware remains
