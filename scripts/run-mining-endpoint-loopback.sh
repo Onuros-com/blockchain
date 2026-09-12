@@ -20,6 +20,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+wait_for_ready() {
+  local log="$1"
+  local pid="$2"
+  for _ in {1..500}; do
+    if grep -q '^READY ' "$log"; then return 0; fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      cat "$log" >&2
+      return 1
+    fi
+    sleep 0.01
+  done
+  cat "$log" >&2
+  echo "mining endpoint readiness timeout" >&2
+  return 1
+}
+
 run_case() {
   local name="$1"
   local port="$2"
@@ -28,6 +44,7 @@ run_case() {
   "$binary" --role server --data "$evidence_dir/$name.db" --port "$port" \
     >"$evidence_dir/$name-server.log" 2>&1 &
   server_pid=$!
+  wait_for_ready "$evidence_dir/$name-server.log" "$server_pid"
   "$binary" --role client --port "$port" "$@" \
     >"$evidence_dir/$name-client.log" 2>&1
   wait "$server_pid"
@@ -42,6 +59,7 @@ run_case altered "$((base_port + 1))" REJECTED --alter-mix
   --port "$((base_port + 2))" --submissions 2 \
   >"$evidence_dir/probed-server.log" 2>&1 &
 server_pid=$!
+wait_for_ready "$evidence_dir/probed-server.log" "$server_pid"
 "$binary" --role client --port "$((base_port + 2))" --negative-probe \
   >"$evidence_dir/probed-client.log" 2>&1
 wait "$server_pid"
