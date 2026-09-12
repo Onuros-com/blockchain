@@ -316,7 +316,7 @@ int main() {
         reject_corrupt_journal();
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "FAIL: " << error.what() << '\\n';
+        std::cerr << "FAIL: " << error.what() << '\n';
         return 1;
     }
 }
