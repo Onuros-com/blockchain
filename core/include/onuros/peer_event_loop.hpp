@@ -35,6 +35,11 @@ enum class PeerLoopError {
     unknown_peer
 };
 
+enum class PeerFrameAction {
+    keep,
+    disconnect
+};
+
 struct PeerEventLoopStats {
     std::uint64_t received_bytes = 0U;
     std::uint64_t sent_bytes = 0U;
@@ -42,6 +47,7 @@ struct PeerEventLoopStats {
     std::uint64_t disconnected_peers = 0U;
     std::uint64_t protocol_failures = 0U;
     std::uint64_t timed_out_peers = 0U;
+    std::uint64_t policy_disconnects = 0U;
 };
 
 class PeerEventLoop {
@@ -100,8 +106,8 @@ public:
         return PeerLoopError::none;
     }
 
-    void tick(std::uint64_t now,
-              const std::function<void(EventPeerId, const P2pFrame&)>& on_frame) {
+    template <typename FrameHandler>
+    void tick_impl(std::uint64_t now, FrameHandler&& on_frame) {
         std::array<std::uint8_t, 16U * 1024U> receive_buffer{};
         for (auto peer = peers_.begin(); peer != peers_.end();) {
             auto& state = peer->second;
@@ -184,7 +190,11 @@ public:
                     state.deadline.mark_handshake_complete(now);
                 ++frames;
                 ++stats_.received_frames;
-                if (on_frame) on_frame(peer->first, parsed.frame);
+                if (on_frame(peer->first, parsed.frame)) {
+                    ++stats_.policy_disconnects;
+                    closed = true;
+                    break;
+                }
             }
             if (closed) {
                 disconnect(peer);
@@ -192,6 +202,24 @@ public:
             }
             ++peer;
         }
+    }
+
+    void tick(std::uint64_t now,
+              const std::function<void(EventPeerId, const P2pFrame&)>& on_frame) {
+        tick_impl(now, [&on_frame](EventPeerId peer, const P2pFrame& frame) {
+            if (on_frame) on_frame(peer, frame);
+            return false;
+        });
+    }
+
+    void tick_with_policy(
+            std::uint64_t now,
+            const std::function<PeerFrameAction(
+                EventPeerId, const P2pFrame&)>& on_frame) {
+        tick_impl(now, [&on_frame](EventPeerId peer, const P2pFrame& frame) {
+            return on_frame &&
+                   on_frame(peer, frame) == PeerFrameAction::disconnect;
+        });
     }
 
     void shutdown() noexcept { peers_.clear(); }
