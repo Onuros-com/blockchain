@@ -5,8 +5,10 @@ three-process synchronization, live headers-first validation, single-owner
 download coordination, resumable chunk checkpoints, persistent peer discovery
 and mutually authenticated TLS 1.3 transport implemented. The bounded multi-peer
 event loop now accepts both raw private-test transports and authenticated TLS;
-the first fail-closed KawPoW mining endpoint is implemented on loopback;
-Windows and independent-machine testing remain open
+a fail-closed full-node admission boundary gates private transactions before
+relay and delegates blocks to full-node validation; the first fail-closed KawPoW
+mining endpoint is implemented on loopback. Coordinated durable block/shielded
+state commits and independent-machine testing remain open
 
 ## Purpose
 
@@ -158,6 +160,12 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   malformed-peer isolation, traffic counters and clean shutdown. Its transport
   interface admits TLS only after the cryptographic handshake has completed;
   the protocol handshake can require that authenticated state.
+- A fail-closed node admission adapter now places every decoded private
+  transaction through the ordinary private mempool verifier before adding it to
+  bounded relay state. Relay-capacity failure rolls back the mempool insertion;
+  invalid, duplicate and conflicting transactions never reach relay state.
+  Blocks can enter only through an injected full-node admission callback.
+  Linux, Windows and sanitizer CI cover the boundary and its failure paths.
 - Core CI now runs for every Stage 7 branch on both Ubuntu and Windows Server.
   Platform-neutral unit and live socket tests run on Windows; Bash orchestration
   tests remain Linux-only. A green Windows job is required before the Windows
@@ -199,12 +207,14 @@ gossip that populated each peer's mempool:
 | 90% | 1,710,744 | 89.64% |
 | 100% | 57,764 | 99.65% |
 
-This checkpoint does not complete Stage 7. The loop must still be integrated
-with the full node's chain-state callbacks; Windows execution,
-independent-machine testing and the sustained ten-minute private-transaction
-gate are also required. The
-cross-platform code is structured for Winsock and links `ws2_32`. Windows Server
-2022 compilation and execution passed in the Stage 7 CI matrix at commit
+This checkpoint does not complete Stage 7. The admission boundary is now
+tested, but live `PeerEventLoop` frame dispatch still must be wired to it. Block
+activation also requires a coordinated durable commit/recovery design across
+the block database and persistent shielded state before those components are
+connected. Independent-machine testing and the sustained ten-minute unique
+private-transaction gate remain required. The cross-platform code is structured
+for Winsock and links `ws2_32`. Windows Server 2022 compilation and execution
+passed in the Stage 7 CI matrix at commit
 `13b30a58c0e63683d3952cedf088dbc57a0ae9a0`; physical Windows hardware remains
 useful for later GPU and packaging validation, not this core networking gate.
 
