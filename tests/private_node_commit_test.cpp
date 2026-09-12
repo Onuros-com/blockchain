@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -30,14 +31,20 @@ Hash256 test_pow(const BlockHeader& header) {
 
 class Verifier final : public PrivateTransactionVerifier {
     Hash256 anchor_;
+    std::map<std::uint8_t, Hash256> anchors_;
 public:
     explicit Verifier(Hash256 anchor) : anchor_(anchor) {}
+    void set_anchor(std::uint8_t selector, Hash256 anchor) {
+        anchors_[selector] = anchor;
+    }
     VerifiedPrivateEffects verify(
             const TransactionEnvelope& transaction) const override {
         if (transaction.body.size() != 1U || transaction.body.front() == 0U)
             return {PrivateProofError::invalid_proof, {}, {}, {}, 0};
         const auto byte = transaction.body.front();
-        return {PrivateProofError::none, anchor_, {value(byte)},
+        const auto found = anchors_.find(byte);
+        const auto& anchor = found == anchors_.end() ? anchor_ : found->second;
+        return {PrivateProofError::none, anchor, {value(byte)},
                 {value(static_cast<std::uint8_t>(byte + 20U))}, 7};
     }
 };
@@ -115,6 +122,42 @@ Block private_candidate(LocalNode& node, const ShieldedState& state,
         state.ordered_commitments(), admission.prepared->commitments());
     solve(*block, pow_limit);
     return *block;
+}
+
+Block branch_candidate(const Block& parent, const ShieldedState& state,
+        const PrivateRewardPolicy& rewards, const Verifier& verifier,
+        const TestRoot& roots, const Hash256& team,
+        const Hash256& ecosystem, std::uint8_t byte,
+        std::uint64_t timestamp, const Target256& pow_limit) {
+    const TransactionEnvelope private_transaction{
+        private_transaction_envelope_version, {byte}};
+    const auto admission = PrivateBlockAdmission::prepare(
+        state, state.tip(), {private_transaction}, verifier,
+        {1024U, 4U, 4U, 8U});
+    check(admission.accepted(), "branch private effects prepared");
+    OnurosRewardPolicy economics;
+    const auto height = parent.header.height + 1U;
+    const auto amounts = economics.allocate(
+        height, admission.prepared->fees(), 0);
+    const auto reward = make_private_reward_transaction({
+        amounts, amounts.miner == 0 ? Hash256{} : value(12U),
+        amounts.team == 0 ? Hash256{} : team,
+        amounts.ecosystem == 0 ? Hash256{} : ecosystem});
+    check(rewards.validate(height, *admission.prepared, reward) ==
+              PrivateRewardError::none,
+          "branch reward validates");
+    Block block;
+    block.header.version = 2U;
+    block.header.height = height;
+    block.header.previous = block_id(parent.header);
+    block.header.timestamp = timestamp;
+    block.header.compact_target = parent.header.compact_target;
+    block.transactions = {reward, private_transaction};
+    block.header.transactions_root = transaction_root(block.transactions);
+    block.header.shielded_root = *roots.calculate(
+        state.ordered_commitments(), admission.prepared->commitments());
+    solve(block, pow_limit);
+    return block;
 }
 
 struct Paths {
@@ -272,6 +315,162 @@ void recover_durable_block() {
     clean(files);
 }
 
+void commit_reorganization() {
+    const auto files = paths("reorganization");
+    clean(files);
+    const auto config = parameters();
+    const auto root = value(49U);
+    const auto team = value(50U);
+    const auto ecosystem = value(51U);
+    LocalNode node(config, test_pow);
+    check(node.open(files.blocks).error == LocalNodeError::none,
+          "reorganization block store opens");
+    const auto genesis = add_genesis(
+        node, config.difficulty.proof_of_work_limit, root);
+    const auto genesis_id = block_id(genesis.header);
+    PersistentShieldedState state(genesis_id, root, 1U << 20U, 100U);
+    check(state.open(files.shielded) == ShieldedStoreError::none,
+          "reorganization shielded store opens");
+    Verifier verifier(root);
+    TestRoot roots;
+    PrivateRewardPolicy rewards(team, ecosystem);
+    PrivateNodeCommitCoordinator coordinator(
+        node, state, verifier, roots, rewards, {1024U, 4U, 4U, 8U},
+        files.journal, config.decode_limits, 8192U);
+
+    const auto main = private_candidate(
+        node, state.state(), rewards, verifier, roots, team, ecosystem,
+        5U, 160U, config.difficulty.proof_of_work_limit);
+    check(coordinator.submit(main, 160U).accepted(),
+          "main private tip commits");
+
+    ShieldedState branch(genesis_id, root);
+    const auto side_one = branch_candidate(
+        genesis, branch, rewards, verifier, roots, team, ecosystem,
+        6U, 161U, config.difficulty.proof_of_work_limit);
+    auto side_one_prepared = PrivateBlockValidator::prepare(
+        branch, side_one, verifier, roots, rewards,
+        {1024U, 4U, 4U, 8U});
+    check(side_one_prepared.accepted() &&
+              branch.connect(block_id(side_one.header),
+                             side_one.header.shielded_root,
+                             *side_one_prepared.prepared) ==
+                  PrivateAdmissionError::none,
+          "side branch state stages first block");
+    verifier.set_anchor(7U, branch.root());
+    const auto side_two = branch_candidate(
+        side_one, branch, rewards, verifier, roots, team, ecosystem,
+        7U, 221U, config.difficulty.proof_of_work_limit);
+    check(node.submit(side_one, 221U).error == LocalNodeError::none &&
+              node.active_state().tip() == block_id(main.header),
+          "equal-work side block remains inactive");
+    check(coordinator.submit(side_two, 221U).accepted(),
+          "stronger private branch commits atomically");
+    check(node.active_state().tip() == block_id(side_two.header) &&
+              state.state().tip() == block_id(side_two.header) &&
+              state.state().height() == 2U &&
+              !state.state().spent(value(5U)) &&
+              state.state().spent(value(6U)) &&
+              state.state().spent(value(7U)),
+          "reorganization replaces block and shielded state");
+    clean(files);
+}
+
+void recover_reorganization() {
+    const auto files = paths("reorganization-recovery");
+    clean(files);
+    const auto config = parameters();
+    const auto root = value(59U);
+    const auto team = value(60U);
+    const auto ecosystem = value(61U);
+    Hash256 genesis_id{};
+    Block side_two;
+    {
+        LocalNode node(config, test_pow);
+        check(node.open(files.blocks).error == LocalNodeError::none,
+              "interrupted reorganization block store opens");
+        const auto genesis = add_genesis(
+            node, config.difficulty.proof_of_work_limit, root);
+        genesis_id = block_id(genesis.header);
+        PersistentShieldedState state(genesis_id, root, 1U << 20U, 100U);
+        check(state.open(files.shielded) == ShieldedStoreError::none,
+              "interrupted reorganization shielded store opens");
+        Verifier verifier(root);
+        TestRoot roots;
+        PrivateRewardPolicy rewards(team, ecosystem);
+        PrivateNodeCommitCoordinator coordinator(
+            node, state, verifier, roots, rewards, {1024U, 4U, 4U, 8U},
+            files.journal, config.decode_limits, 8192U);
+        const auto main = private_candidate(
+            node, state.state(), rewards, verifier, roots, team, ecosystem,
+            8U, 160U, config.difficulty.proof_of_work_limit);
+        check(coordinator.submit(main, 160U).accepted(),
+              "recovery main private tip commits");
+
+        ShieldedState branch(genesis_id, root);
+        const auto side_one = branch_candidate(
+            genesis, branch, rewards, verifier, roots, team, ecosystem,
+            9U, 161U, config.difficulty.proof_of_work_limit);
+        auto side_one_prepared = PrivateBlockValidator::prepare(
+            branch, side_one, verifier, roots, rewards,
+            {1024U, 4U, 4U, 8U});
+        check(side_one_prepared.accepted() &&
+                  branch.connect(block_id(side_one.header),
+                                 side_one.header.shielded_root,
+                                 *side_one_prepared.prepared) ==
+                      PrivateAdmissionError::none,
+              "recovery side branch stages first block");
+        verifier.set_anchor(10U, branch.root());
+        side_two = branch_candidate(
+            side_one, branch, rewards, verifier, roots, team, ecosystem,
+            10U, 221U, config.difficulty.proof_of_work_limit);
+        check(node.submit(side_one, 221U).error == LocalNodeError::none,
+              "recovery side branch first block stored");
+        check(coordinator.journal().write(side_two, 221U) ==
+                  PrivateCommitJournalError::none,
+              "reorganization intent persists");
+        check(node.submit(side_two, 221U).error == LocalNodeError::none,
+              "block database switches before simulated crash");
+    }
+
+    LocalNode node(config, test_pow);
+    check(node.open(files.blocks).error == LocalNodeError::none,
+          "reorganized block store restarts");
+    PersistentShieldedState state(genesis_id, root, 1U << 20U, 100U);
+    check(state.open(files.shielded) == ShieldedStoreError::none,
+          "old shielded branch restarts");
+    Verifier verifier(root);
+    TestRoot roots;
+    PrivateRewardPolicy rewards(team, ecosystem);
+    const auto* side_one = node.store().find(side_two.header.previous);
+    check(side_one != nullptr, "recovery side block is durable");
+    ShieldedState branch(genesis_id, root);
+    auto side_one_prepared = PrivateBlockValidator::prepare(
+        branch, side_one->block, verifier, roots, rewards,
+        {1024U, 4U, 4U, 8U});
+    check(side_one_prepared.accepted() &&
+              branch.connect(block_id(side_one->block.header),
+                             side_one->block.header.shielded_root,
+                             *side_one_prepared.prepared) ==
+                  PrivateAdmissionError::none,
+          "restart reconstructs side branch anchor");
+    verifier.set_anchor(10U, branch.root());
+    PrivateNodeCommitCoordinator coordinator(
+        node, state, verifier, roots, rewards, {1024U, 4U, 4U, 8U},
+        files.journal, config.decode_limits, 8192U);
+    const auto recovered = coordinator.recover();
+    check(recovered.accepted() && recovered.recovery_action ==
+              PrivateRecoveryAction::completed_shielded_commit,
+          "restart completes interrupted private reorganization");
+    check(node.active_state().tip() == block_id(side_two.header) &&
+              state.state().tip() == block_id(side_two.header) &&
+              state.state().spent(value(9U)) &&
+              state.state().spent(value(10U)) &&
+              !state.state().spent(value(8U)),
+          "recovery reconciles reorganized shielded state");
+    clean(files);
+}
+
 void reject_corrupt_journal() {
     const auto files = paths("corrupt");
     clean(files);
@@ -313,6 +512,8 @@ int main() {
         normal_commit();
         recover_uncommitted_intent();
         recover_durable_block();
+        commit_reorganization();
+        recover_reorganization();
         reject_corrupt_journal();
         return 0;
     } catch (const std::exception& error) {
