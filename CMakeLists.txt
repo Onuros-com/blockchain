@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(OnurosLocalBlockchain LANGUAGES CXX)
+project(OnurosLocalBlockchain LANGUAGES C CXX)
 find_package(OpenSSL QUIET)
 
 option(ONUROS_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
@@ -12,12 +12,27 @@ target_compile_features(onuros_core INTERFACE cxx_std_17)
 if(WIN32)
   target_link_libraries(onuros_core INTERFACE ws2_32)
 endif()
+
+set(ONUROS_KAWPOW_ROOT
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ravencoin-kawpow/src)
+add_library(onuros_kawpow STATIC
+  core/src/kawpow.cpp
+  ${ONUROS_KAWPOW_ROOT}/crypto/ethash/lib/ethash/ethash.cpp
+  ${ONUROS_KAWPOW_ROOT}/crypto/ethash/lib/ethash/progpow.cpp
+  ${ONUROS_KAWPOW_ROOT}/crypto/ethash/lib/ethash/primes.c
+  ${ONUROS_KAWPOW_ROOT}/crypto/ethash/lib/keccak/keccak.c
+  ${ONUROS_KAWPOW_ROOT}/crypto/ethash/lib/keccak/keccakf1600.c
+  ${ONUROS_KAWPOW_ROOT}/crypto/ethash/lib/keccak/keccakf800.c)
+target_include_directories(onuros_kawpow PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+  ${ONUROS_KAWPOW_ROOT})
+target_compile_features(onuros_kawpow PUBLIC cxx_std_17)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   target_compile_definitions(onuros_core INTERFACE ONUROS_ORCHARD_FFI_ENABLED=1)
   target_link_libraries(onuros_core INTERFACE "${ONUROS_ORCHARD_FFI_LIBRARY}")
 endif()
 
-set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test)
+set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test kawpow_test)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   list(APPEND ONUROS_TESTS private_node_orchard_pipeline_test)
 endif()
@@ -25,6 +40,7 @@ foreach(target ${ONUROS_TESTS})
   add_executable(${target} tests/${target}.cpp)
   target_link_libraries(${target} PRIVATE onuros_core)
 endforeach()
+target_link_libraries(kawpow_test PRIVATE onuros_kawpow)
 
 add_executable(onuros_local_node apps/local_node_main.cpp)
 target_link_libraries(onuros_local_node PRIVATE onuros_core)
@@ -96,6 +112,7 @@ add_test(NAME persistent_shielded_state COMMAND persistent_shielded_state_test)
 add_test(NAME private_reward COMMAND private_reward_test)
 add_test(NAME private_mempool COMMAND private_mempool_test)
 add_test(NAME private_block COMMAND private_block_test)
+add_test(NAME kawpow COMMAND kawpow_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
 if(NOT WIN32)

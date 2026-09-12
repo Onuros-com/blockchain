@@ -15,7 +15,9 @@
 
 namespace onuros {
 
-using PowHashFunction = std::function<Hash256(const BlockHeader&)>;
+// A proof engine returns no hash when proof-specific commitments are invalid.
+// This keeps invalid GPU output distinct from every possible 256-bit work hash.
+using PowHashFunction = std::function<std::optional<Hash256>(const BlockHeader&)>;
 
 struct LocalNodeParameters {
     BlockValidationLimits validation_limits;
@@ -107,7 +109,8 @@ class LocalNode {
             context.max_future_seconds = parameters_.max_future_seconds;
             if (validate_block(block, parameters_.validation_limits, context,
                     [this](const BlockHeader& header) {
-                        return hash_meets_compact_target(pow_hash_(header),
+                        const auto hash = pow_hash_(header);
+                        return hash && hash_meets_compact_target(*hash,
                             header.compact_target,
                             parameters_.difficulty.proof_of_work_limit);
                     }) != BlockValidationError::none)
@@ -197,7 +200,8 @@ public:
         context.max_future_seconds = parameters_.max_future_seconds;
         const auto validation = validate_block(block, parameters_.validation_limits,
             context, [this](const BlockHeader& header) {
-                return hash_meets_compact_target(pow_hash_(header),
+                const auto hash = pow_hash_(header);
+                return hash && hash_meets_compact_target(*hash,
                     header.compact_target, parameters_.difficulty.proof_of_work_limit);
             });
         if (validation != BlockValidationError::none)
@@ -231,7 +235,8 @@ public:
     LocalNodeResult mine(Block& candidate, std::uint64_t adjusted_time,
                          std::uint64_t max_attempts) {
         for (std::uint64_t attempt = 0U; attempt < max_attempts; ++attempt) {
-            if (hash_meets_compact_target(pow_hash_(candidate.header),
+            const auto hash = pow_hash_(candidate.header);
+            if (hash && hash_meets_compact_target(*hash,
                     candidate.header.compact_target,
                     parameters_.difficulty.proof_of_work_limit))
                 return submit(candidate, adjusted_time);
