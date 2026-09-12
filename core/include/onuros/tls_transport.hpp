@@ -3,6 +3,7 @@
 #include "onuros/p2p_transport.hpp"
 
 #include <openssl/err.h>
+#include <openssl/opensslv.h>
 #include <openssl/ssl.h>
 
 #include <cstddef>
@@ -102,7 +103,11 @@ public:
         if (!ssl_) return TlsStatus::error;
         const auto result = SSL_do_handshake(ssl_.get());
         if (result != 1) return classify(result);
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
         X509* peer = SSL_get1_peer_certificate(ssl_.get());
+#else
+        X509* peer = SSL_get_peer_certificate(ssl_.get());
+#endif
         if (peer == nullptr || SSL_get_verify_result(ssl_.get()) != X509_V_OK) {
             X509_free(peer);
             return TlsStatus::error;
