@@ -22,6 +22,11 @@ audit points.
 ## Automated workflow references
 
 - Core workflow run
+  [34704364613](https://github.com/Onuros-com/blockchain/actions/runs/34704364613)
+  at commit `0f76a1625c40b73f046a37deccb77cc31d571c40`: all four jobs
+  passed with the block fixture in the 99%--100% size window and the physical
+  performance evidence validator enabled.
+- Core workflow run
   [34704080168](https://github.com/Onuros-com/blockchain/actions/runs/34704080168)
   at commit `3b8b418fff4b79d90506b6e1bfd3cf8c8d9cf7d8`: all four jobs
   passed. Ubuntu included the first near-limit reconstruction gate and the
