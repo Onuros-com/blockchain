@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace onuros;
@@ -13,6 +14,16 @@ unsigned checks = 0U;
 void check(bool condition, const char* label) {
     ++checks;
     if (!condition) throw std::runtime_error(label);
+}
+
+std::string hex(const std::vector<std::uint8_t>& bytes) {
+    constexpr char digits[] = "0123456789abcdef";
+    std::string result(bytes.size() * 2U, '0');
+    for (std::size_t i = 0U; i < bytes.size(); ++i) {
+        result[i * 2U] = digits[bytes[i] >> 4U];
+        result[i * 2U + 1U] = digits[bytes[i] & 0x0fU];
+    }
+    return result;
 }
 
 LocalNodeParameters parameters() {
@@ -39,6 +50,10 @@ int main() {
         MiningJob fixture{9U, 30'000U, {}, 0x207fffffU};
         fixture.header_hash[0] = 17U;
         const auto encoded_job = encode_mining_job(fixture);
+        check(hex(encoded_job) ==
+              "0100010009000000000000003075000000000000110000000000000000000000"
+              "0000000000000000000000000000000000000000ffff7f20",
+              "miner-compatible job golden vector");
         const auto decoded_job = decode_mining_job(encoded_job);
         check(encoded_job.size() == mining_job_encoded_size && decoded_job &&
               decoded_job->job_id == fixture.job_id &&
@@ -56,6 +71,10 @@ int main() {
         MiningSolution solution_fixture{9U, 42U, {}};
         solution_fixture.mix_hash[3] = 11U;
         const auto encoded_solution = encode_mining_solution(solution_fixture);
+        check(hex(encoded_solution) ==
+              "0100010009000000000000002a000000000000000000000b0000000000000000"
+              "0000000000000000000000000000000000000000",
+              "miner-compatible solution golden vector");
         const auto decoded_solution = decode_mining_solution(encoded_solution);
         check(encoded_solution.size() == mining_solution_encoded_size &&
               decoded_solution && decoded_solution->job_id == 9U &&
