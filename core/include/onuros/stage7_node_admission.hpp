@@ -200,7 +200,9 @@ public:
     NetworkFrameAdmissionResult admit_frame(const P2pFrame& frame) {
         if (frame.type != P2pMessageType::transactions) {
             ++metrics_.transaction_frames_rejected;
-            return {NetworkFrameAdmissionError::unsupported_message};
+            NetworkFrameAdmissionResult result;
+            result.error = NetworkFrameAdmissionError::unsupported_message;
+            return result;
         }
         const auto decoded =
             decode_network_transactions(frame.payload, batch_limits_);
