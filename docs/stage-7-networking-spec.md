@@ -9,9 +9,8 @@ event loop now accepts both raw private-test transports and authenticated TLS;
 a fail-closed full-node admission boundary gates private transactions before
 relay and delegates blocks to full-node validation; invalid transaction traffic
 is scored by the live event loop and disconnects at a bounded threshold. The
-first fail-closed KawPoW mining endpoint is implemented on loopback. Linear-tip
-block/shielded commits have a write-ahead recovery coordinator. Reorganization
-commit recovery and independent-machine testing remain open
+first fail-closed KawPoW mining endpoint is implemented on loopback. Active-tip block/shielded commits and stronger-branch reorganizations have a
+write-ahead recovery coordinator. Independent-machine testing remains open
 
 ## Purpose
 
@@ -231,12 +230,11 @@ gossip that populated each peer's mempool:
 This checkpoint does not complete Stage 7. The admission boundary,
 transaction-frame handler, real-Orchard ownership composition and event-loop
 peer policy are tested. Production node assembly still must instantiate that
-composition around its live peers. Linear active-tip block activation now has a
+composition around its live peers. Active-tip block activation and stronger-branch reorganization use a
 checksummed write-ahead coordinator across the block database and persistent
 shielded state; startup recovery is specified in
-`docs/stage-7-state-commit-recovery.md`. Atomic reorganization recovery,
-independent-machine testing and the sustained ten-minute unique private-
-transaction gate remain required. The cross-platform code is structured
+`docs/stage-7-state-commit-recovery.md`. Independent-machine testing and the
+sustained ten-minute unique private-transaction gate remain required. The cross-platform code is structured
 for Winsock and links `ws2_32`. Windows Server 2022 compilation and execution
 passed in the Stage 7 CI matrix at commit
 `13b30a58c0e63683d3952cedf088dbc57a0ae9a0`; physical Windows hardware remains
