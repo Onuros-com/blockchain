@@ -1,7 +1,8 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
 Status: protocol engine, nonblocking TCP primitives, live loopback relay,
-three-process synchronization, live headers-first validation, single-owner
+three-process synchronization and private-transaction relay, live headers-first
+validation, single-owner
 download coordination, resumable chunk checkpoints, persistent peer discovery
 and mutually authenticated TLS 1.3 transport implemented. The bounded multi-peer
 event loop now accepts both raw private-test transports and authenticated TLS;
@@ -135,6 +136,14 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   its header chain, request only then the missing transactions, reconstruct and
   independently validate each block, then a restarted node proves durable tip
   recovery. Each repeat uses isolated evidence files.
+- A separate three-process private relay gate creates one canonical version-2
+  private envelope at an origin process, admits it locally, relays it through a
+  second process, and independently admits it at an observer. All three
+  processes report the same transaction identifier with one mempool and relay
+  entry each. The harness logs identifiers and counts only. Its verifier
+  callback is deterministic test instrumentation, so this gate proves process,
+  framing and admission ownership but does not replace the real-Orchard CI or
+  sustained verification evidence.
 - A mini-node retention engine that preserves all headers and local header-chain
   commitments while retaining a bounded recent body window. Checkpoints are
   local commitments, not trusted or signed network checkpoints.
