@@ -78,26 +78,50 @@ case "$mode" in
     }
     shift
     expected_id=""
+    receivers=""
     for manifest in "$@"; do
       require_file "$manifest"
+      role="$(field "$manifest" role)"
+      receiver="$(field "$manifest" receiver_id)"
       bytes="$(field "$manifest" block_bytes)"
+      transactions="$(field "$manifest" transactions)"
+      overlap="$(field "$manifest" mempool_overlap_percent)"
+      overlap_transactions="$(field "$manifest" mempool_overlap_transactions)"
+      announcement="$(field "$manifest" announcement_bytes)"
+      request="$(field "$manifest" request_bytes)"
+      response="$(field "$manifest" response_bytes)"
       elapsed="$(field "$manifest" propagation_validation_seconds)"
       block_id="$(field "$manifest" block_id)"
       limits="$(field "$manifest" limits_exceeded)"
       validation="$(field "$manifest" validation)"
       durable="$(field "$manifest" durable_activation)"
       restart="$(field "$manifest" restart_recovery)"
-      awk -v b="$bytes" -v e="$elapsed" '
+      backend="$(field "$manifest" verification_backend)"
+      exit_status="$(field "$manifest" process_exit_status)"
+      payloads="$(field "$manifest" private_payloads_logged)"
+      awk -v b="$bytes" -v e="$elapsed" -v t="$transactions" \
+          -v o="$overlap" -v ot="$overlap_transactions" \
+          -v a="$announcement" -v q="$request" -v r="$response" '
         BEGIN {
           limit=16777216;
-          exit(b >= int(limit * 0.99) && b <= limit && e <= 30.0 ? 0 : 1)
+          exit(b >= int(limit * 0.99) && b <= limit && e <= 30.0 &&
+               t >= 1800 && o > 0 && o < 100 && ot > 0 &&
+               a > 0 && q > 0 && r > 0 ? 0 : 1)
         }
       ' || { echo "block size/latency gate failed: $manifest" >&2; exit 1; }
-      [[ "$limits" == "0" && "$validation" == "PASS" &&
-         "$durable" == "PASS" && "$restart" == "PASS" ]] || {
+      [[ "$role" == "receiver" && -n "$receiver" &&
+         "$block_id" =~ ^[0-9a-f]{64}$ && "$limits" == "0" &&
+         "$validation" == "PASS" && "$durable" == "PASS" &&
+         "$restart" == "PASS" && "$backend" == "orchard-ffi" &&
+         "$exit_status" == "0" && "$payloads" == "false" ]] || {
         echo "block invariant failed: $manifest" >&2
         exit 1
       }
+      [[ " $receivers " != *" $receiver "* ]] || {
+        echo "block receiver repeated: $receiver" >&2
+        exit 1
+      }
+      receivers="$receivers $receiver"
       if [[ -z "$expected_id" ]]; then expected_id="$block_id";
       elif [[ "$block_id" != "$expected_id" ]]; then
         echo "receiver block IDs diverged" >&2

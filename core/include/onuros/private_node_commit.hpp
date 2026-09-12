@@ -227,7 +227,8 @@ class PrivateNodeCommitCoordinator {
 
     PrivateCommitResult prepare_reorganization(
             const ReorganizationPlan& plan, const Block& candidate,
-            std::vector<ShieldedConnect>& connects) const {
+            std::vector<ShieldedConnect>& connects,
+            std::size_t candidate_workers = 1U) const {
         auto staged = shielded_.state();
         for (const auto& id : plan.disconnect) {
             const auto error = staged.disconnect(id);
@@ -254,9 +255,13 @@ class PrivateNodeCommitCoordinator {
                 result.error = PrivateCommitError::state_mismatch;
                 return result;
             }
-            auto prepared = PrivateBlockValidator::prepare(
-                staged, *block, verifier_, root_calculator_, reward_policy_,
-                admission_limits_);
+            auto prepared = id == candidate_id && candidate_workers > 1U
+                ? PrivateBlockValidator::prepare_parallel(
+                    staged, *block, verifier_, root_calculator_, reward_policy_,
+                    admission_limits_, candidate_workers)
+                : PrivateBlockValidator::prepare(
+                    staged, *block, verifier_, root_calculator_, reward_policy_,
+                    admission_limits_);
             if (!prepared.accepted()) {
                 PrivateCommitResult result;
                 result.error = PrivateCommitError::private_validation_failed;
@@ -307,8 +312,12 @@ public:
           journal_(std::move(journal_path), decode_limits,
                    max_journal_bytes) {}
 
-    PrivateCommitResult submit(const Block& block,
-                               std::uint64_t adjusted_time) {
+private:
+    PrivateCommitResult submit_impl(const Block& block,
+                                    std::uint64_t adjusted_time,
+                                    std::size_t workers) {
+        if (workers == 0U)
+            return {PrivateCommitError::private_validation_failed};
         const auto pending = journal_.read();
         if (pending.error != PrivateCommitJournalError::not_found) {
             PrivateCommitResult result;
@@ -350,7 +359,7 @@ public:
             return {PrivateCommitError::inactive_branch};
         std::vector<ShieldedConnect> connects;
         const auto validation = prepare_reorganization(
-            *index_result.reorganization, block, connects);
+            *index_result.reorganization, block, connects, workers);
         if (!validation.accepted()) return validation;
         const auto journal_error = journal_.write(block, adjusted_time);
         if (journal_error != PrivateCommitJournalError::none) {
@@ -382,6 +391,18 @@ public:
             return result;
         }
         return clear_with_action(PrivateRecoveryAction::none);
+    }
+
+public:
+    PrivateCommitResult submit(const Block& block,
+                               std::uint64_t adjusted_time) {
+        return submit_impl(block, adjusted_time, 1U);
+    }
+
+    PrivateCommitResult submit_parallel(const Block& block,
+                                        std::uint64_t adjusted_time,
+                                        std::size_t workers) {
+        return submit_impl(block, adjusted_time, workers);
     }
 
     PrivateCommitResult recover() {

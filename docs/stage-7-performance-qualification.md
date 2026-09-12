@@ -127,6 +127,13 @@ scripts build the executable, generate the corpus, run a real-FFI loopback
 smoke test and capture key-free host evidence. See
 `stage-7-private-relay-runbook.md` for the physical procedure.
 
+`onuros_stage7_block_propagation_node` is the physical Gate 7 executable. It
+uses the same generated Orchard corpus to construct a deterministic block in
+the 99%-to-100% consensus-size window. The receiver exercises compact-block
+announcement, missing-transaction request and bounded chunk assembly before
+full proof validation, coordinated durable activation and database reopen.
+See `stage-7-block-propagation-runbook.md` for the two-receiver procedure.
+
 ## Evidence manifest
 
 For both physical gates, preserve:

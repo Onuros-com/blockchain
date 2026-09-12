@@ -39,17 +39,36 @@ sed -i 's/^role=relay$/role=observer/' "$work/c.relay"
 
 for receiver in a b; do
   cat >"$work/$receiver.block" <<EOF
+role=receiver
+receiver_id=$receiver
 block_bytes=16612467
+transactions=1811
+mempool_overlap_percent=50
+mempool_overlap_transactions=905
+announcement_bytes=58168
+request_bytes=3728
+response_bytes=8300000
 propagation_validation_seconds=29.999
 block_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 limits_exceeded=0
 validation=PASS
 durable_activation=PASS
 restart_recovery=PASS
+verification_backend=orchard-ffi
+process_exit_status=0
+private_payloads_logged=false
 EOF
 done
 bash "$validator" block "$work/a.block" "$work/b.block" |
   grep -q '^stage7_block_propagation_gate=PASS '
+
+sed -i 's/^receiver_id=b$/receiver_id=a/' "$work/b.block"
+if bash "$validator" block "$work/a.block" "$work/b.block" \
+    >/dev/null 2>&1; then
+  echo "validator accepted repeated block receiver" >&2
+  exit 1
+fi
+sed -i 's/^receiver_id=a$/receiver_id=b/' "$work/b.block"
 
 sed -i 's/29.999/30.001/' "$work/b.block"
 if bash "$validator" block "$work/a.block" "$work/b.block" >/dev/null 2>&1; then

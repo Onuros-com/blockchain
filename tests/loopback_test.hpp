@@ -21,8 +21,8 @@ inline std::optional<LoopbackPair> connect_loopback_pair() {
 
     for (std::uint16_t candidate = 0U;
          candidate <= fallback_port_count; ++candidate) {
-        const auto requested_port = candidate == 0U
-            ? 0U
+        const std::uint16_t requested_port = candidate == 0U
+            ? std::uint16_t{0U}
             : static_cast<std::uint16_t>(first_fallback_port + candidate - 1U);
         auto listener = TcpListener::listen_loopback(requested_port);
         if (!listener) continue;

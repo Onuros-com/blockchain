@@ -40,31 +40,11 @@ struct PreparedPrivateBlock {
 };
 
 class PrivateBlockValidator {
-public:
-    static PreparedPrivateBlock prepare(
+    static PreparedPrivateBlock finish(
             const ShieldedState& state, const Block& block,
-            const PrivateTransactionVerifier& verifier,
             const ShieldedRootCalculator& root_calculator,
             const PrivateRewardPolicy& reward_policy,
-            const PrivateAdmissionLimits& limits) {
-        if (!has_valid_transaction_root(block))
-            return {PrivateBlockError::invalid_transaction_root,
-                    PrivateAdmissionError::none, PrivateProofError::none,
-                    PrivateRewardError::none, std::nullopt};
-        if (block.transactions.empty())
-            return {PrivateBlockError::missing_reward,
-                    PrivateAdmissionError::none, PrivateProofError::none,
-                    PrivateRewardError::none, std::nullopt};
-        if (!decode_private_reward(block.transactions.front()).accepted())
-            return {PrivateBlockError::malformed_reward,
-                    PrivateAdmissionError::none, PrivateProofError::none,
-                    PrivateRewardError::none, std::nullopt};
-
-        const std::vector<TransactionEnvelope> private_transactions(
-            block.transactions.begin() + 1, block.transactions.end());
-        auto admission = PrivateBlockAdmission::prepare(
-            state, block.header.previous, private_transactions, verifier,
-            limits);
+            PrivateBlockAdmission::Outcome admission) {
         if (!admission.accepted()) {
             PreparedPrivateBlock result;
             result.error = PrivateBlockError::admission_failed;
@@ -96,6 +76,60 @@ public:
         PreparedPrivateBlock result;
         result.prepared = std::move(admission.prepared);
         return result;
+    }
+
+public:
+    static PreparedPrivateBlock prepare(
+            const ShieldedState& state, const Block& block,
+            const PrivateTransactionVerifier& verifier,
+            const ShieldedRootCalculator& root_calculator,
+            const PrivateRewardPolicy& reward_policy,
+            const PrivateAdmissionLimits& limits) {
+        if (!has_valid_transaction_root(block))
+            return {PrivateBlockError::invalid_transaction_root,
+                    PrivateAdmissionError::none, PrivateProofError::none,
+                    PrivateRewardError::none, std::nullopt};
+        if (block.transactions.empty())
+            return {PrivateBlockError::missing_reward,
+                    PrivateAdmissionError::none, PrivateProofError::none,
+                    PrivateRewardError::none, std::nullopt};
+        if (!decode_private_reward(block.transactions.front()).accepted())
+            return {PrivateBlockError::malformed_reward,
+                    PrivateAdmissionError::none, PrivateProofError::none,
+                    PrivateRewardError::none, std::nullopt};
+
+        const std::vector<TransactionEnvelope> private_transactions(
+            block.transactions.begin() + 1, block.transactions.end());
+        return finish(state, block, root_calculator, reward_policy,
+            PrivateBlockAdmission::prepare(
+            state, block.header.previous, private_transactions, verifier,
+            limits));
+    }
+
+    static PreparedPrivateBlock prepare_parallel(
+            const ShieldedState& state, const Block& block,
+            const PrivateTransactionVerifier& verifier,
+            const ShieldedRootCalculator& root_calculator,
+            const PrivateRewardPolicy& reward_policy,
+            const PrivateAdmissionLimits& limits, std::size_t workers) {
+        if (!has_valid_transaction_root(block))
+            return {PrivateBlockError::invalid_transaction_root,
+                    PrivateAdmissionError::none, PrivateProofError::none,
+                    PrivateRewardError::none, std::nullopt};
+        if (block.transactions.empty())
+            return {PrivateBlockError::missing_reward,
+                    PrivateAdmissionError::none, PrivateProofError::none,
+                    PrivateRewardError::none, std::nullopt};
+        if (!decode_private_reward(block.transactions.front()).accepted())
+            return {PrivateBlockError::malformed_reward,
+                    PrivateAdmissionError::none, PrivateProofError::none,
+                    PrivateRewardError::none, std::nullopt};
+        const std::vector<TransactionEnvelope> private_transactions(
+            block.transactions.begin() + 1, block.transactions.end());
+        return finish(state, block, root_calculator, reward_policy,
+            PrivateBlockAdmission::prepare_parallel(
+                state, block.header.previous, private_transactions, verifier,
+                limits, workers));
     }
 };
 

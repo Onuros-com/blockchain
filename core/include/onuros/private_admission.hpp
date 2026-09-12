@@ -5,10 +5,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <optional>
 #include <set>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -136,10 +139,24 @@ public:
         }
     };
 
+private:
+    static Outcome prepare_verified(
+        const ShieldedState& state, const Hash256& parent,
+        const std::vector<TransactionEnvelope>& transactions,
+        std::vector<VerifiedPrivateEffects> effects,
+        const PrivateAdmissionLimits& limits);
+
+public:
     static Outcome prepare(const ShieldedState& state, const Hash256& parent,
                            const std::vector<TransactionEnvelope>& transactions,
                            const PrivateTransactionVerifier& verifier,
                            const PrivateAdmissionLimits& limits);
+
+    static Outcome prepare_parallel(
+        const ShieldedState& state, const Hash256& parent,
+        const std::vector<TransactionEnvelope>& transactions,
+        const PrivateTransactionVerifier& verifier,
+        const PrivateAdmissionLimits& limits, std::size_t workers);
 };
 
 class ShieldedState {
@@ -312,14 +329,17 @@ public:
     }
 };
 
-inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare(
+inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare_verified(
         const ShieldedState& state, const Hash256& parent,
         const std::vector<TransactionEnvelope>& transactions,
-        const PrivateTransactionVerifier& verifier,
+        std::vector<VerifiedPrivateEffects> effects,
         const PrivateAdmissionLimits& limits) {
     if (parent != state.tip())
         return {PrivateAdmissionError::wrong_parent, PrivateProofError::none,
                 std::nullopt};
+    if (effects.size() != transactions.size())
+        return {PrivateAdmissionError::proof_verification_failed,
+                PrivateProofError::backend_unavailable, std::nullopt};
 
     std::set<Hash256> transaction_ids;
     std::set<Hash256> candidate_nullifiers;
@@ -330,7 +350,8 @@ inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare(
     Amount total_fees = 0;
 
     ordered_transaction_ids.reserve(transactions.size());
-    for (const auto& transaction : transactions) {
+    for (std::size_t index = 0U; index < transactions.size(); ++index) {
+        const auto& transaction = transactions[index];
         if (transaction.body.size() > limits.max_transaction_body_bytes)
             return {PrivateAdmissionError::transaction_body_too_large,
                     PrivateProofError::none, std::nullopt};
@@ -338,58 +359,58 @@ inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare(
         if (!transaction_ids.insert(id).second)
             return {PrivateAdmissionError::duplicate_transaction,
                     PrivateProofError::none, std::nullopt};
-        auto effects = verifier.verify(transaction);
-        if (effects.error != PrivateProofError::none)
+        auto& verified = effects[index];
+        if (verified.error != PrivateProofError::none)
             return {PrivateAdmissionError::proof_verification_failed,
-                    effects.error, std::nullopt};
-        if (effects.nullifiers.empty())
+                    verified.error, std::nullopt};
+        if (verified.nullifiers.empty())
             return {PrivateAdmissionError::empty_spend,
                     PrivateProofError::none, std::nullopt};
-        if (effects.commitments.empty())
+        if (verified.commitments.empty())
             return {PrivateAdmissionError::empty_output,
                     PrivateProofError::none, std::nullopt};
-        if (effects.nullifiers.size() > limits.max_nullifiers_per_transaction)
+        if (verified.nullifiers.size() > limits.max_nullifiers_per_transaction)
             return {PrivateAdmissionError::too_many_nullifiers,
                     PrivateProofError::none, std::nullopt};
-        if (effects.commitments.size() > limits.max_commitments_per_transaction)
+        if (verified.commitments.size() > limits.max_commitments_per_transaction)
             return {PrivateAdmissionError::too_many_commitments,
                     PrivateProofError::none, std::nullopt};
-        if (effects.nullifiers.size() >
+        if (verified.nullifiers.size() >
                 limits.max_private_actions_per_block ||
-            effects.commitments.size() >
+            verified.commitments.size() >
                 limits.max_private_actions_per_block ||
             ordered_nullifiers.size() >
                 limits.max_private_actions_per_block -
-                    effects.nullifiers.size() ||
+                    verified.nullifiers.size() ||
             ordered_commitments.size() >
                 limits.max_private_actions_per_block -
-                    effects.commitments.size())
+                    verified.commitments.size())
             return {PrivateAdmissionError::too_many_private_actions,
                     PrivateProofError::none, std::nullopt};
-        if (!state.has_anchor(effects.anchor))
+        if (!state.has_anchor(verified.anchor))
             return {PrivateAdmissionError::unknown_anchor,
                     PrivateProofError::none, std::nullopt};
-        for (const auto& nullifier : effects.nullifiers) {
+        for (const auto& nullifier : verified.nullifiers) {
             if (state.spent(nullifier) ||
                 !candidate_nullifiers.insert(nullifier).second)
                 return {PrivateAdmissionError::repeated_nullifier,
                         PrivateProofError::none, std::nullopt};
             ordered_nullifiers.push_back(nullifier);
         }
-        for (const auto& commitment : effects.commitments) {
+        for (const auto& commitment : verified.commitments) {
             if (state.contains_commitment(commitment) ||
                 !candidate_commitments.insert(commitment).second)
                 return {PrivateAdmissionError::repeated_commitment,
                         PrivateProofError::none, std::nullopt};
             ordered_commitments.push_back(commitment);
         }
-        if (effects.fee < 0)
+        if (verified.fee < 0)
             return {PrivateAdmissionError::negative_fee,
                     PrivateProofError::none, std::nullopt};
-        if (effects.fee > std::numeric_limits<Amount>::max() - total_fees)
+        if (verified.fee > std::numeric_limits<Amount>::max() - total_fees)
             return {PrivateAdmissionError::fee_overflow,
                     PrivateProofError::none, std::nullopt};
-        total_fees += effects.fee;
+        total_fees += verified.fee;
         ordered_transaction_ids.push_back(id);
     }
 
@@ -399,6 +420,45 @@ inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare(
                       std::move(ordered_commitments), total_fees};
     return {PrivateAdmissionError::none, PrivateProofError::none,
             std::optional<Prepared>{std::move(prepared)}};
+}
+
+inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare(
+        const ShieldedState& state, const Hash256& parent,
+        const std::vector<TransactionEnvelope>& transactions,
+        const PrivateTransactionVerifier& verifier,
+        const PrivateAdmissionLimits& limits) {
+    std::vector<VerifiedPrivateEffects> effects;
+    effects.reserve(transactions.size());
+    for (const auto& transaction : transactions)
+        effects.push_back(verifier.verify(transaction));
+    return prepare_verified(state, parent, transactions, std::move(effects),
+                            limits);
+}
+
+inline PrivateBlockAdmission::Outcome PrivateBlockAdmission::prepare_parallel(
+        const ShieldedState& state, const Hash256& parent,
+        const std::vector<TransactionEnvelope>& transactions,
+        const PrivateTransactionVerifier& verifier,
+        const PrivateAdmissionLimits& limits, std::size_t workers) {
+    if (workers <= 1U || transactions.size() <= 1U)
+        return prepare(state, parent, transactions, verifier, limits);
+    workers = std::min(workers, transactions.size());
+    std::vector<VerifiedPrivateEffects> effects(transactions.size());
+    std::atomic<std::size_t> next{0U};
+    std::vector<std::thread> threads;
+    threads.reserve(workers);
+    for (std::size_t worker = 0U; worker < workers; ++worker) {
+        threads.emplace_back([&] {
+            for (;;) {
+                const auto index = next.fetch_add(1U, std::memory_order_relaxed);
+                if (index >= transactions.size()) break;
+                effects[index] = verifier.verify(transactions[index]);
+            }
+        });
+    }
+    for (auto& thread : threads) thread.join();
+    return prepare_verified(state, parent, transactions, std::move(effects),
+                            limits);
 }
 
 } // namespace onuros

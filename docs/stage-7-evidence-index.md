@@ -15,7 +15,7 @@ audit points.
 | 4. Competing branches converge by work | Chain-index tests and private commit coordinator tests cover a stronger-branch reorganization and restart after the block database switches | Automated gate passed |
 | 5. Malformed, oversized and flooding traffic remains bounded | Frame decoder, event loop, admission, block transfer, fuzz, per-tick flood, sanitizer, and peer-policy tests in run 34704080168 | Automated gate passed |
 | 6. 100 unique valid private transactions/s for 600 s across three published nodes | Real Orchard fixture verification sustained 120.218/s for 600.033 s; the real-FFI/TLS load executable and common-anchor corpus generator are implemented | Tooling implemented; physical 66,000-transaction run pending |
-| 7. Near-16 MiB block propagation and validation | `stage7_block_limit` passed in run 34704080168; compact-relay bandwidth benchmark recorded | In-process safety gate passed; independent-node latency and durable shielded activation pending |
+| 7. Near-16 MiB block propagation and validation | `stage7_block_limit` passed in run 34704080168; the real-FFI/TLS compact-block sender and durable receiver are implemented | Tooling implemented; two physical receiver runs pending |
 | 8. Crash-safe shutdown, restart and synchronization | Checksummed commit journal, durable ordering, corrupt-journal rejection, reorg recovery, event-loop clean shutdown | Automated gate passed |
 | 9. Protocol, threat model, operator procedure and raw evidence | Networking specification, recovery design, threat model, independent TLS runbook, performance qualification, and GCP verifier log are committed | Documentation present; physical Gate 6/7 evidence pending |
 
@@ -102,6 +102,10 @@ replace Stage 7 network Gates 6 or 7.
 - `scripts/generate-stage7-private-corpus.sh`: non-overwriting generator for
   common-anchor, distinct valid Orchard transactions.
 - `docs/stage-7-private-relay-runbook.md`: physical Gate 6 operating procedure.
+- `apps/stage7_block_propagation_node.cpp`: real-Orchard compact-block sender
+  and durable receiver for physical Gate 7.
+- `docs/stage-7-block-propagation-runbook.md`: physical Gate 7 operating
+  procedure and evidence boundary.
 - `core/include/onuros/peer_event_loop.hpp`: bounded multi-peer event loop and
   policy enforcement.
 - `apps/stage7_bandwidth_benchmark.cpp`: compact-relay accounting and

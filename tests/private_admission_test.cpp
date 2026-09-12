@@ -104,6 +104,25 @@ int main() {
         check(valid.prepared->nullifiers().size() == 2U);
         check(valid.prepared->commitments().size() == 2U);
         check(valid.prepared->fees() == 30);
+
+        const auto parallel = PrivateBlockAdmission::prepare_parallel(
+            state, state.tip(), {transaction(1), transaction(2)}, verifier,
+            limits(), 2U);
+        check(parallel.accepted());
+        check(parallel.prepared->transaction_ids() ==
+              valid.prepared->transaction_ids());
+        check(parallel.prepared->nullifiers() ==
+              valid.prepared->nullifiers());
+        check(parallel.prepared->commitments() ==
+              valid.prepared->commitments());
+        check(parallel.prepared->fees() == valid.prepared->fees());
+
+        const auto parallel_invalid = PrivateBlockAdmission::prepare_parallel(
+            state, state.tip(), {transaction(4), transaction(6)}, verifier,
+            limits(), 2U);
+        check(parallel_invalid.error ==
+              PrivateAdmissionError::proof_verification_failed);
+        check(parallel_invalid.proof_error == PrivateProofError::invalid_proof);
     }
 
     {

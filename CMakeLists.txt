@@ -87,17 +87,20 @@ if(OpenSSL_FOUND)
   if(ONUROS_ORCHARD_FFI_LIBRARY)
     add_executable(onuros_stage7_private_load_node
       apps/stage7_private_load_node.cpp)
-    target_link_libraries(onuros_stage7_private_load_node PRIVATE
-      onuros_core OpenSSL::SSL OpenSSL::Crypto)
-    set_target_properties(onuros_stage7_private_load_node PROPERTIES
-      CXX_EXTENSIONS OFF)
-    if(MSVC)
-      target_compile_options(onuros_stage7_private_load_node PRIVATE
-        /W4 /WX /permissive-)
-    else()
-      target_compile_options(onuros_stage7_private_load_node PRIVATE
-        -Wall -Wextra -Wpedantic -Werror)
-    endif()
+    add_executable(onuros_stage7_block_propagation_node
+      apps/stage7_block_propagation_node.cpp)
+    foreach(target onuros_stage7_private_load_node
+                   onuros_stage7_block_propagation_node)
+      target_link_libraries(${target} PRIVATE
+        onuros_core OpenSSL::SSL OpenSSL::Crypto)
+      set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
+      if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
+      else()
+        target_compile_options(${target} PRIVATE
+          -Wall -Wextra -Wpedantic -Werror)
+      endif()
+    endforeach()
   endif()
 endif()
 
