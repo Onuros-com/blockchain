@@ -165,6 +165,9 @@ if(NOT WIN32)
   add_test(NAME stage7_performance_manifest COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/tests/stage7_performance_manifest_test.sh
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-stage7-performance-evidence.sh)
+  add_test(NAME stage7_evidence_bundle COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/tests/stage7_evidence_bundle_test.sh
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-stage7-evidence-bundle.sh)
   add_test(NAME stage7_three_process COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
            $<TARGET_FILE:onuros_stage7_network_node>

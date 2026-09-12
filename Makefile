@@ -30,6 +30,8 @@ test: $(addprefix build/,$(TESTS))
 	@$(MAKE) --no-print-directory kawpow-test
 	@$(MAKE) --no-print-directory mining-endpoint-test
 	@bash tests/amd_kawpow_log_parser_test.sh scripts/validate-amd-kawpow-log.sh
+	@bash tests/stage7_performance_manifest_test.sh scripts/validate-stage7-performance-evidence.sh
+	@bash tests/stage7_evidence_bundle_test.sh scripts/validate-stage7-evidence-bundle.sh
 
 kawpow-test:
 	mkdir -p build/kawpow-objects

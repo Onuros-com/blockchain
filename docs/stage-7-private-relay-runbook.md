@@ -128,11 +128,14 @@ Transfer the three evidence directories without any `.key` file. On the audit
 host run:
 
 ```bash
-bash scripts/validate-stage7-performance-evidence.sh relay \
-  origin/node-manifest.txt relay/node-manifest.txt observer/node-manifest.txt
+bash scripts/validate-stage7-evidence-bundle.sh relay \
+  origin relay observer
 ```
 
 A passing result requires at least 600 seconds, at least 100 admitted unique
 transactions/s on every node, no duplicate or invalid transaction, no limit
 failure, no process failure, and the same transaction-ID set hash on all three
-hosts. A slower result is capacity evidence but does not close Gate 6.
+hosts. The bundle validator also requires one immutable commit and one TLS CA
+across all hosts, checks the captured manifest and log hashes, and rejects
+private-key files, symbolic links or private-key PEM material. A slower result
+is capacity evidence but does not close Gate 6.

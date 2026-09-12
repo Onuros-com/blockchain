@@ -119,8 +119,8 @@ Transfer the two `final` directories to the audit host. Confirm that neither
 archive contains a `.key` file, then run:
 
 ```bash
-bash scripts/validate-stage7-performance-evidence.sh block \
-  rtx3060/node-manifest.txt rtx4070/node-manifest.txt
+bash scripts/validate-stage7-evidence-bundle.sh block \
+  rtx3060 rtx4070
 ```
 
 The validator requires two distinct receiver IDs, a common block ID, a block
@@ -128,3 +128,6 @@ between 99% and 100% of 16 MiB, nonzero compact-relay announcement/request/
 response byte counts, measured mempool overlap, full Orchard validation,
 durable activation and restart recovery. Each receiver must finish the timed
 propagation, validation, commit and reopen path in at most 30.000 seconds.
+It also requires both evidence bundles to name the same immutable commit and
+TLS CA, verifies their captured manifest and log hashes, and rejects private-key
+files, symbolic links or private-key PEM material.

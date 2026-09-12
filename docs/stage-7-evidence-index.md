@@ -106,6 +106,9 @@ replace Stage 7 network Gates 6 or 7.
   and durable receiver for physical Gate 7.
 - `docs/stage-7-block-propagation-runbook.md`: physical Gate 7 operating
   procedure and evidence boundary.
+- `scripts/validate-stage7-evidence-bundle.sh`: cross-host commit, TLS CA,
+  evidence-integrity and private-key exclusion gate layered over the numeric
+  relay/block manifest validator.
 - `core/include/onuros/peer_event_loop.hpp`: bounded multi-peer event loop and
   policy enforcement.
 - `apps/stage7_bandwidth_benchmark.cpp`: compact-relay accounting and
