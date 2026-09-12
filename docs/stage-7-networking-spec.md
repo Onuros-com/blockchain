@@ -176,8 +176,21 @@ This checkpoint does not complete Stage 7. The loop must still be integrated
 with the full node's chain-state callbacks; Windows execution,
 independent-machine testing and the sustained ten-minute private-transaction
 gate are also required. The
-cross-platform code is structured for Winsock and links `ws2_32`, but Windows
-execution remains a required CI/hardware gate.
+cross-platform code is structured for Winsock and links `ws2_32`. Windows Server
+2022 compilation and execution passed in the Stage 7 CI matrix at commit
+`13b30a58c0e63683d3952cedf088dbc57a0ae9a0`; physical Windows hardware remains
+useful for later GPU and packaging validation, not this core networking gate.
+
+### Sustained private-load evidence rules
+
+The duration gate runs the real pinned Orchard verifier with a shared start
+barrier and fails below the configured TPS floor. Its default is four workers,
+600 seconds and 100 verifications per second. Reusing one valid fixture measures
+real proof-verification capacity, but it does not represent distinct nullifiers
+and therefore is not called unique mempool admission or settlement. Stage 7
+still requires a separate three-node relay result with unique admitted
+transactions; these measurements must not be combined into a misleading TPS
+number.
 
 ## Peer and denial-of-service controls
 

@@ -179,6 +179,33 @@ fn run(encoded: Vec<u8>, sighash: [u8; 32], iterations: u64,
     );
 }
 
+fn run_duration(encoded: Vec<u8>, sighash: [u8; 32], seconds: u64,
+                barrier: (&Path, &Path)) {
+    assert!(seconds > 0, "duration must be positive");
+    let warmup = unsafe {
+        onuros_orchard_verify(encoded.as_ptr(), encoded.len(), sighash.as_ptr())
+    };
+    assert_eq!(warmup, 0, "benchmark fixture must verify");
+    wait_for_start(barrier.0, barrier.1);
+    let started = Instant::now();
+    let duration = Duration::from_secs(seconds);
+    let mut verified = 0u64;
+    while started.elapsed() < duration {
+        let status = unsafe {
+            onuros_orchard_verify(encoded.as_ptr(), encoded.len(), sighash.as_ptr())
+        };
+        assert_eq!(black_box(status), 0, "Orchard verification failed");
+        verified = verified.checked_add(1).expect("verification count overflow");
+    }
+    let elapsed = started.elapsed().as_secs_f64();
+    println!(
+        "verified={} elapsed_seconds={:.9} worker_tps={:.3}",
+        verified,
+        elapsed,
+        verified as f64 / elapsed,
+    );
+}
+
 fn main() {
     let args: Vec<_> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -213,6 +240,20 @@ fn main() {
             };
             run(bytes[32..].to_vec(), sighash, iterations, barrier);
         }
+        Some("--verify-duration") if args.len() == 6 => {
+            let bytes = fs::read(&args[2]).expect("read benchmark fixture");
+            assert!(bytes.len() > 32, "benchmark fixture is truncated");
+            let sighash: [u8; 32] = bytes[..32].try_into()
+                .expect("fixed sighash length");
+            let seconds = args[3].parse::<u64>()
+                .expect("duration must be an integer");
+            run_duration(
+                bytes[32..].to_vec(),
+                sighash,
+                seconds,
+                (Path::new(&args[4]), Path::new(&args[5])),
+            );
+        }
         None => {
             let (encoded, sighash) = fixture();
             run(encoded, sighash, 100, None);
@@ -224,7 +265,7 @@ fn main() {
             run(encoded, sighash, iterations, None);
         }
         _ => panic!(
-            "usage: private_verify_benchmark [ITERATIONS] | --generate FILE | --generate-onuros FILE [DIGEST_FILE] | --verify FILE ITERATIONS [READY START]"
+            "usage: private_verify_benchmark [ITERATIONS] | --generate FILE | --generate-onuros FILE [DIGEST_FILE] | --verify FILE ITERATIONS [READY START] | --verify-duration FILE SECONDS READY START"
         ),
     }
 }

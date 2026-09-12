@@ -1,8 +1,9 @@
 name: Orchard verification bridge
 
 on:
+  workflow_dispatch:
   push:
-    branches: [private-transactions]
+    branches: [private-transactions, "stage-7/**"]
     paths:
       - "crypto/orchard-ffi/**"
       - "CMakeLists.txt"
@@ -13,6 +14,7 @@ on:
       - "tests/private_node_orchard_pipeline_test.cpp"
       - "tests/private_block_test.cpp"
       - "scripts/run-private-tps.sh"
+      - "scripts/run-private-duration-gate.sh"
       - "scripts/run-private-node-orchard-test.sh"
       - ".github/workflows/orchard-ffi.yml"
   pull_request:
