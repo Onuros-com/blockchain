@@ -27,6 +27,11 @@ int accept_orchard_fixture(const std::uint8_t* encoded,
         : static_cast<int>(OrchardFfiStatus::internal_error);
 }
 
+int reject_orchard_fixture(const std::uint8_t*, std::size_t,
+                           const std::uint8_t*) {
+    return static_cast<int>(OrchardFfiStatus::invalid_proof);
+}
+
 TransactionEnvelope private_transaction(std::uint8_t selector,
                                         const Hash256& anchor) {
     PrivateTransactionBundle bundle;
@@ -116,5 +121,42 @@ int main() {
     check(atomic.relay_pool().size() == 0U);
     check(atomic.metrics().transactions_accepted == 0U);
     check(atomic.metrics().transaction_frames_rejected == 1U);
+
+    OrchardNetworkAdmission malformed_admission(
+        &accept_orchard_fixture, state, bundle_limits(), mempool_limits(),
+        16U, 8U << 20U);
+    OrchardPeerAdmissionPolicy malformed_policy(malformed_admission);
+    P2pFrame malformed_frame;
+    malformed_frame.type = P2pMessageType::transactions;
+    check(malformed_policy.handle(100U, malformed_frame) ==
+          PeerFrameAction::disconnect);
+    check(malformed_policy.score(100U) == 100U);
+
+    OrchardNetworkAdmission proof_admission(
+        &reject_orchard_fixture, state, bundle_limits(), mempool_limits(),
+        16U, 8U << 20U);
+    OrchardPeerPolicyLimits proof_limits;
+    proof_limits.invalid_proof_score = 25U;
+    proof_limits.disconnect_score = 50U;
+    OrchardPeerAdmissionPolicy proof_policy(proof_admission, proof_limits);
+    check(proof_policy.handle(
+              101U, transaction_frame({private_transaction(4U, root)})) ==
+          PeerFrameAction::keep);
+    check(proof_policy.score(101U) == 25U);
+    check(proof_policy.handle(
+              101U, transaction_frame({private_transaction(5U, root)})) ==
+          PeerFrameAction::disconnect);
+    check(proof_policy.score(101U) == 50U);
+    proof_policy.forget(101U);
+    check(proof_policy.score(101U) == 0U);
+
+    OrchardNetworkAdmission backpressure_admission(
+        &accept_orchard_fixture, state, bundle_limits(), mempool_limits(),
+        0U, 0U);
+    OrchardPeerAdmissionPolicy backpressure_policy(backpressure_admission);
+    check(backpressure_policy.handle(
+              102U, transaction_frame({private_transaction(6U, root)})) ==
+          PeerFrameAction::keep);
+    check(backpressure_policy.score(102U) == 0U);
     return 0;
 }
