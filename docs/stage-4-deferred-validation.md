@@ -1,8 +1,9 @@
 # Stage 4 hardware validation status
 
-Stage 4's GPU-mining prototype is hardware-qualified on both NVIDIA and AMD.
-The node remains authoritative: it recomputes every proposed nonce and mix with
-the pinned CPU KawPoW verifier before target comparison and persistence.
+Stage 4's GPU workers have executed on both NVIDIA and AMD hardware. The pinned
+Onuros CPU KawPoW verifier separately passes consensus vectors and rejection
+tests. The two paths are not yet connected end to end: a GPU-produced nonce and
+mix has not been submitted into the runnable node's CPU verifier.
 
 ## NVIDIA evidence
 
@@ -32,13 +33,27 @@ The evidence summary and artifact hashes are recorded in
 - The local node-admission test persists only the CPU-verified block.
 - The GPLv3 reference workers remain outside the Onuros core license boundary.
 
-## Later integration and production hardening
+## Required Stage 7 integration gate
+
+Before calling the mining path production-integrated:
+
+- replace the runnable node's deterministic test proof-of-work path with the
+  fail-closed `onuros_kawpow` verifier;
+- submit a GPU-produced nonce and mix through the external node endpoint;
+- record CPU-verifier acceptance of the valid candidate and rejection of a
+  deliberately altered candidate; and
+- repeat a short AMD run against that endpoint.
+
+These tasks extend the existing Stage 7 endpoint work; they do not change the
+roadmap or invalidate the completed MI300X execution evidence.
+
+## Later hardware hardening
 
 The following are useful later checks, but are not Stage 4 prototype blockers:
 
 - Test another NVIDIA and a consumer AMD RDNA architecture when practical.
 - Run multi-hour thermal and power characterization on production miner builds.
-- Mine against a real multi-node Onuros testnet and record network-level
-  accepted/rejected shares after the Stage 7 external endpoint is deployed.
+- Run multi-node endurance and fault-injection tests after the Stage 7
+  integration gate is deployed.
 
 No paid cloud GPU should be left running after evidence is captured.

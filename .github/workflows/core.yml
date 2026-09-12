@@ -10,7 +10,9 @@ on:
       - "tests/**"
       - "CMakeLists.txt"
       - "Makefile"
+      - "scripts/*kawpow*.sh"
       - "scripts/run-stage7-*.sh"
+      - "third_party/ravencoin-kawpow/**"
       - ".github/workflows/core.yml"
 
 permissions:

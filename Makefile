@@ -22,6 +22,7 @@ tls-test:
 test: $(addprefix build/,$(TESTS))
 	@for test in $(TESTS); do ./build/$$test || exit $$?; done
 	@$(MAKE) --no-print-directory kawpow-test
+	@bash tests/amd_kawpow_log_parser_test.sh scripts/validate-amd-kawpow-log.sh
 
 kawpow-test:
 	mkdir -p build/kawpow-objects

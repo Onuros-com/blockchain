@@ -1,8 +1,9 @@
 # Stage 4 AMD KawPoW qualification runbook
 
-This runbook qualifies an AMD GPU worker without trusting it for consensus.
-The worker proposes a nonce and mix hash. `onuros_kawpow` independently
-recomputes KawPoW on the CPU before target comparison and block persistence.
+This runbook qualifies execution of an AMD GPU worker without trusting it for
+consensus. The current reference benchmark proves that the pinned worker hashes
+on the selected AMD device. Directly submitting its nonce and mix hash to
+`onuros_kawpow` is a separate Stage 7 integration gate.
 
 ## Security and licensing boundary
 
@@ -14,8 +15,8 @@ recomputes KawPoW on the CPU before target comparison and block persistence.
   `632f6ea0a5cd09e2c6443374dbe6db0a767715ba`, which is GPLv3.
 - The GPL worker is not copied into, statically linked with, or relicensed as
   the Onuros core.
-- A GPU result is never authoritative. The CPU verifier rejects a changed mix,
-  nonce, preimage, target or result.
+- A future GPU submission must never be authoritative. The existing CPU
+  verifier rejects a changed mix, nonce, preimage, target or result.
 
 ## RunPod MI300X procedure
 
@@ -47,12 +48,20 @@ gate:
 If the build places the executable elsewhere, use the `miner=` path printed by
 the build script. The gate records OS, driver/runtime, device, binary hash,
 command, output, exit status, temperature/power metrics when available, and log
-hashes. Stop rather than terminate the pod after evidence is captured.
+hashes. Its validator requires a `gfx` OpenCL device and a numeric hashrate
+greater than zero; CPU-only and `0.00 Mh` logs fail. Stop rather than terminate
+the pod after evidence is captured.
 
-The build helper applies two narrow source-compatibility shims required by the
-pinned 2019 worker on Ubuntu 24.04: a fixed Linux `PTHREAD_STACK_MIN` for its
-old bundled Boost and an explicit `<cstdint>` include. These affect only the
-separate GPL reference worker build; they do not change Onuros consensus code.
+The gate also requires GNU `timeout` status 124, proving that the requested
+duration elapsed. A worker that exits early does not qualify even if its partial
+log contains a non-zero hashrate.
+
+The build helper verifies the pinned checkout and rejects unexpected tracked
+worker or submodule changes. It then applies two narrow source-compatibility
+shims required by the pinned 2019 worker on Ubuntu 24.04: a fixed Linux
+`PTHREAD_STACK_MIN` for its old bundled Boost and an explicit `<cstdint>`
+include. These affect only the separate GPL reference worker build; they do not
+change Onuros consensus code.
 
 ## Recorded MI300X qualification
 
@@ -76,6 +85,7 @@ reset, invalid memory access or thermal shutdown.
 5. No fatal error, device reset, invalid memory access or thermal shutdown is
    present in the log.
 
-The reference benchmark qualifies GPU execution. Accepted/rejected network
-share counts require the Stage 7 external multi-node endpoint and remain a
-separate final integration gate.
+The reference benchmark qualifies GPU execution only. A GPU-produced nonce and
+mix must still be accepted by the Onuros CPU verifier and an altered candidate
+must be rejected through the Stage 7 external multi-node endpoint. That remains
+the final integration gate.

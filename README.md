@@ -37,15 +37,18 @@ sanitizer builds run in GitHub Actions.
 Read the [Stage 6 completion report](docs/stage-6-completion-report.md),
 [Stage 6 threat model](docs/stage-6-threat-model.md), and
 [Stage 7 networking specification](docs/stage-7-networking-spec.md). Stage 4's
-remaining hardware evidence is tracked separately in the
-[deferred validation record](docs/stage-4-deferred-validation.md); it does not
-turn the deterministic local proof-of-work engine into production KawPoW.
+hardware evidence and remaining integration boundary are tracked separately in
+the [validation record](docs/stage-4-deferred-validation.md); hardware execution
+does not turn the deterministic local proof-of-work engine into production
+KawPoW.
 
 The Stage 4 recovery work adds a pinned KawPoW 0.9.4 CPU consensus verifier,
 published vectors, invalid-mix rejection in the node path, and an
 [AMD qualification runbook](docs/stage-4-amd-runbook.md). The MI300X ROCm/HIP
-smoke gate has passed; the sustained KawPoW hardware gate must pass before Stage
-4 is described as complete.
+smoke and sustained KawPoW hardware gates passed. Direct submission of a GPU
+candidate into the Onuros CPU verifier remains the Stage 7 integration gate.
+See the [Stage 4 audit record](docs/stage-4-audit.md) for the exact closed and
+deferred findings.
 
 This remains pre-mainnet software. Passing tests and measured throughput do not
 constitute a security audit or readiness for real funds.

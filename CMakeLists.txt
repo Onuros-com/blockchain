@@ -32,6 +32,15 @@ if(ONUROS_ORCHARD_FFI_LIBRARY)
   target_link_libraries(onuros_core INTERFACE "${ONUROS_ORCHARD_FFI_LIBRARY}")
 endif()
 
+if(ONUROS_SANITIZERS)
+  if(MSVC)
+    message(FATAL_ERROR "Combined ASan/UBSan requires GCC or Clang")
+  endif()
+  target_compile_options(onuros_kawpow PRIVATE
+    -fsanitize=address,undefined -fno-sanitize-recover=all
+    -fno-omit-frame-pointer)
+endif()
+
 set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test kawpow_test)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   list(APPEND ONUROS_TESTS private_node_orchard_pipeline_test)
@@ -116,6 +125,9 @@ add_test(NAME kawpow COMMAND kawpow_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
 if(NOT WIN32)
+  add_test(NAME amd_kawpow_log_parser COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/tests/amd_kawpow_log_parser_test.sh
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-amd-kawpow-log.sh)
   add_test(NAME stage7_three_process COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
            $<TARGET_FILE:onuros_stage7_network_node>

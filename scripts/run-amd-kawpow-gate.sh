@@ -41,16 +41,13 @@ set -e
   sha256sum "$log"
 } 2>&1 | tee -a "$manifest"
 
-if [[ "$status" -ne 0 && "$status" -ne 124 && "$status" -ne 130 ]]; then
-  echo "amd_kawpow_gate=FAIL reason=miner_exit" | tee -a "$manifest"
+if [[ "$status" -ne 124 ]]; then
+  echo "amd_kawpow_gate=FAIL reason=duration_not_completed" | tee -a "$manifest"
   exit 1
 fi
-if grep -Eqi 'no usable mining devices|fatal|segmentation fault' "$log"; then
-  echo "amd_kawpow_gate=FAIL reason=runtime_error" | tee -a "$manifest"
-  exit 1
-fi
-if ! grep -Eqi '([0-9]+([.][0-9]+)?[[:space:]]*[kmg]?h(/s)?|hashrate)' "$log"; then
-  echo "amd_kawpow_gate=FAIL reason=no_hashrate_evidence" | tee -a "$manifest"
+readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if ! "$script_dir/validate-amd-kawpow-log.sh" "$log" | tee -a "$manifest"; then
+  echo "amd_kawpow_gate=FAIL reason=log_validation" | tee -a "$manifest"
   exit 1
 fi
 
