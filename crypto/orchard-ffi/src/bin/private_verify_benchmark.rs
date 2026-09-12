@@ -109,10 +109,20 @@ fn common_anchor_notes(count: usize) -> (Vec<(Note, MerklePath)>, Anchor) {
                     break rho;
                 }
             };
-            Note::new(
-                recipient, NoteValue::from_raw(5_007), rho,
-                version.note_version(), &mut rng,
-            )
+            let rseed = loop {
+                let mut bytes = [0; 32];
+                rng.fill_bytes(&mut bytes);
+                if let Some(rseed) = Option::<RandomSeed>::from(
+                    RandomSeed::from_bytes(bytes, &rho),
+                ) {
+                    break rseed;
+                }
+            };
+            Option::<Note>::from(Note::from_parts(
+                recipient, NoteValue::from_raw(5_007), rho, rseed,
+                version.note_version(),
+            ))
+            .expect("valid corpus note")
         })
         .collect();
     let mut levels: Vec<Vec<MerkleHashOrchard>> =
