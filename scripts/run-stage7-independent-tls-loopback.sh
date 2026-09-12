@@ -10,7 +10,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$(dirname "$0")/generate-stage7-tls-material.sh" \
+bash "$(dirname "$0")/generate-stage7-tls-material.sh" \
   "$work/tls" onuros-server onuros-client >/dev/null
 port=39443
 
