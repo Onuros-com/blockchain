@@ -1,5 +1,6 @@
 #include "onuros/p2p_transport.hpp"
 #include "onuros/stage7_relay.hpp"
+#include "loopback_test.hpp"
 
 #include <array>
 #include <chrono>
@@ -53,17 +54,13 @@ int main() {
     try {
         SocketRuntime runtime;
         check(runtime.ready(), "socket runtime initializes");
-        auto listener = TcpListener::listen_loopback();
-        check(listener && listener->valid() && listener->port() != 0U,
-              "nonblocking loopback listener opens ephemeral port");
-        auto client = TcpConnection::connect_ipv4("127.0.0.1", listener->port());
-        check(client && client->valid(), "real TCP client connects");
-        std::optional<TcpConnection> server;
-        for (unsigned attempt = 0U; attempt < 2000U && !server; ++attempt) {
-            server = listener->accept_one();
-            if (!server) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        check(server && server->valid(), "real TCP listener accepts peer");
+        auto pair = test::connect_loopback_pair();
+        check(pair && pair->listener.valid() && pair->listener.port() != 0U,
+              "nonblocking loopback listener opens");
+        check(pair->client.valid(), "real TCP client connects");
+        check(pair->server.valid(), "real TCP listener accepts peer");
+        auto& client = pair->client;
+        auto& server = pair->server;
 
         HelloMessage hello;
         hello.chain_id = value(1U);
@@ -73,10 +70,10 @@ int main() {
         const P2pFrame frame{stage7_protocol_version, P2pMessageType::hello,
                              1U, encode_hello(hello)};
         const auto wire = encode_p2p_frame(frame);
-        check(send_all(*client, wire), "framed hello sent over real socket");
+        check(send_all(client, wire), "framed hello sent over real socket");
 
         FrameStreamDecoder stream({}, 512U * 1024U);
-        const auto parsed = receive_next(*server, stream);
+        const auto parsed = receive_next(server, stream);
         check(parsed.status == FrameStreamStatus::frame_ready &&
               parsed.frame.type == P2pMessageType::hello,
               "fragmented real TCP frame reconstructed");
@@ -110,9 +107,9 @@ int main() {
         const auto compact_wire = encode_p2p_frame({
             stage7_protocol_version, P2pMessageType::compact_block, 3U,
             encode_compact_block_announcement(announcement)});
-        check(send_all(*client, inventory_wire) && send_all(*client, compact_wire),
+        check(send_all(client, inventory_wire) && send_all(client, compact_wire),
               "inventory and compact announcement sent over live connection");
-        const auto received_inventory_frame = receive_next(*server, stream);
+        const auto received_inventory_frame = receive_next(server, stream);
         const auto received_inventory = decode_inventory(
             received_inventory_frame.frame.payload, {8U, 16U});
         check(received_inventory_frame.status == FrameStreamStatus::frame_ready &&
@@ -120,7 +117,7 @@ int main() {
                   P2pMessageType::transaction_inventory &&
               received_inventory && *received_inventory == inventory,
               "live transaction inventory decoded");
-        const auto received_compact_frame = receive_next(*server, stream);
+        const auto received_compact_frame = receive_next(server, stream);
         const auto received_announcement = decode_compact_block_announcement(
             received_compact_frame.frame.payload, 8U, 1024U);
         check(received_compact_frame.status == FrameStreamStatus::frame_ready &&
@@ -149,10 +146,10 @@ int main() {
         const auto request_wire = encode_p2p_frame({
             stage7_protocol_version, P2pMessageType::get_block_transactions,
             4U, encode_missing_transaction_request(*missing)});
-        check(send_all(*server, request_wire),
+        check(send_all(server, request_wire),
               "missing transaction request sent back over live connection");
         FrameStreamDecoder client_stream({}, 512U * 1024U);
-        const auto received_request_frame = receive_next(*client, client_stream);
+        const auto received_request_frame = receive_next(client, client_stream);
         const auto received_request = decode_missing_transaction_request(
             received_request_frame.frame.payload, 8U);
         check(received_request_frame.status == FrameStreamStatus::frame_ready &&
@@ -165,9 +162,9 @@ int main() {
         const auto chunk_wire = encode_p2p_frame({
             stage7_protocol_version, P2pMessageType::block_transactions, 4U,
             encode_block_transaction_chunk(chunks->front())});
-        check(send_all(*client, chunk_wire),
+        check(send_all(client, chunk_wire),
               "missing transaction chunk sent over live connection");
-        const auto received_chunk_frame = receive_next(*server, stream);
+        const auto received_chunk_frame = receive_next(server, stream);
         const auto received_chunk = decode_block_transaction_chunk(
             received_chunk_frame.frame.payload, chunk_limits);
         check(received_chunk_frame.status == FrameStreamStatus::frame_ready &&

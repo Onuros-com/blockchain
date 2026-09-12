@@ -1,5 +1,6 @@
 #include "onuros/tls_transport.hpp"
 #include "onuros/peer_event_loop.hpp"
+#include "loopback_test.hpp"
 
 #include <array>
 #include <chrono>
@@ -25,19 +26,13 @@ int main(int argc, char** argv) {
         auto client_context = TlsContext::mutual(argv[3], argv[4], argv[5]);
         check(server_context && client_context, "mutual TLS contexts load");
         SocketRuntime runtime;
-        auto listener = TcpListener::listen_loopback();
-        check(runtime.ready() && listener, "TLS loopback listener opens");
-        auto client_socket = TcpConnection::connect_ipv4("127.0.0.1", listener->port());
-        std::optional<TcpConnection> server_socket;
-        for (unsigned i = 0U; i < 2'000U && !server_socket; ++i) {
-            server_socket = listener->accept_one();
-            if (!server_socket) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        check(client_socket && server_socket, "TLS TCP peers connect");
+        check(runtime.ready(), "socket runtime initializes");
+        auto pair = test::connect_loopback_pair();
+        check(pair.has_value(), "TLS TCP peers connect");
         auto client = std::make_unique<TlsPeerTransport>(
-            *client_context, std::move(*client_socket), TlsRole::client, "onuros-server");
+            *client_context, std::move(pair->client), TlsRole::client, "onuros-server");
         auto server = std::make_unique<TlsPeerTransport>(
-            *server_context, std::move(*server_socket), TlsRole::server, "onuros-client");
+            *server_context, std::move(pair->server), TlsRole::server, "onuros-client");
         for (unsigned i = 0U; i < 10'000U &&
                 (!client->authenticated() || !server->authenticated()); ++i) {
             if (!client->authenticated() && client->handshake() == TlsStatus::error)
