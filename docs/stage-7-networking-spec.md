@@ -10,7 +10,7 @@ a fail-closed full-node admission boundary gates private transactions before
 relay and delegates blocks to full-node validation; invalid transaction traffic
 is scored by the live event loop and disconnects at a bounded threshold. The
 first fail-closed KawPoW mining endpoint is implemented on loopback. Active-tip block/shielded commits and stronger-branch reorganizations have a
-write-ahead recovery coordinator. Independent-machine testing remains open
+write-ahead recovery coordinator. An identity-verifying TLS probe, certificate generator, and evidence capture path are implemented for independent hosts. The physical independent-machine run remains open.
 
 ## Purpose
 
@@ -158,13 +158,18 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   sequence discovery. Corrupt checkpoints restore atomically or not at all.
 - Bandwidth accounting separates useful, duplicate, avoided-duplicate and
   resumed bytes without recording private transaction contents.
+- The near-limit block regression constructs a 16.5 MB block, transfers all
+  missing transactions through bounded compact-block chunks, reconstructs the
+  exact encoding, and runs structural and contextual validation. This is an
+  in-process CI gate; published-node latency remains a separate measurement.
 - Persistent peer discovery uses a bounded, checksummed database with atomic
   replacement, deterministic candidate selection and capped exponential retry
   backoff. Invalid addresses, duplicate records and corrupt databases fail
   closed.
 - The authenticated transport uses TLS 1.3 with certificates required from
-  both peers and validated against an operator-configured trust root. TLS
-  compression and renegotiation are disabled. Tests generate temporary
+  both peers and validated against an operator-configured trust root. Each
+  side also verifies the configured DNS identity in the peer certificate.
+  TLS compression and renegotiation are disabled. Tests generate temporary
   one-day credentials; no private key is committed to the repository.
 - The multi-peer event loop applies per-peer read, write and frame budgets,
   bounded send queues, handshake and idle deadlines, partial-write recovery,
@@ -233,8 +238,11 @@ peer policy are tested. Production node assembly still must instantiate that
 composition around its live peers. Active-tip block activation and stronger-branch reorganization use a
 checksummed write-ahead coordinator across the block database and persistent
 shielded state; startup recovery is specified in
-`docs/stage-7-state-commit-recovery.md`. Independent-machine testing and the
-sustained ten-minute unique private-transaction gate remain required. The cross-platform code is structured
+`docs/stage-7-state-commit-recovery.md`. The two-host TLS procedure is in
+`docs/stage-7-independent-deployment.md`; physical execution remains required.
+The sustained ten-minute unique private-transaction gate and published-node
+near-limit block latency gate remain required. Their workloads, counters and
+pass conditions are specified in `docs/stage-7-performance-qualification.md`. The cross-platform code is structured
 for Winsock and links `ws2_32`. Windows Server 2022 compilation and execution
 passed in the Stage 7 CI matrix at commit
 `13b30a58c0e63683d3952cedf088dbc57a0ae9a0`; physical Windows hardware remains
