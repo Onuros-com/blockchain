@@ -37,11 +37,14 @@ ChainWork block_work(const Block& block) {
 int main() {
     const auto path = std::filesystem::temp_directory_path() /
                       "onuros-stage5-block-store-test.db";
+    const auto cap_path = std::filesystem::temp_directory_path() /
+                          "onuros-stage7-block-cap-test.db";
     auto temporary = path;
     temporary += ".tmp";
     std::error_code ignored;
     std::filesystem::remove(path, ignored);
     std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(cap_path, ignored);
     try {
         const DecodeLimits limits{4096U, 16U, 1024U};
         PersistentBlockStore store(limits, 1U << 20U);
@@ -121,13 +124,29 @@ int main() {
         check(bounded.open(path) == BlockStoreError::database_too_large,
               "oversized database rejected before allocation");
 
+        PersistentBlockStore consensus_bounded(
+            {max_serialized_block_bytes + 1U, 16U,
+             static_cast<std::uint32_t>(max_serialized_block_bytes)},
+            64U * 1024U * 1024U);
+        check(consensus_bounded.open(cap_path) == BlockStoreError::none,
+              "consensus-cap test database opens");
+        auto oversized = make_block(0U, {}, 100U, 1U);
+        oversized.transactions = {{1U, std::vector<std::uint8_t>(
+            max_serialized_block_bytes - block_prefix_encoded_size - 8U + 1U)}};
+        oversized.header.transactions_root = transaction_root(oversized.transactions);
+        check(consensus_bounded.append(oversized, block_work(oversized)) ==
+              BlockStoreError::invalid_block_encoding,
+              "configured store cannot bypass 16 MiB consensus ceiling");
+
         std::cout << checks << " block-store checks passed\n";
     } catch (const std::exception& error) {
         std::filesystem::remove(path, ignored);
         std::filesystem::remove(temporary, ignored);
+        std::filesystem::remove(cap_path, ignored);
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;
     }
     std::filesystem::remove(path, ignored);
     std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(cap_path, ignored);
 }

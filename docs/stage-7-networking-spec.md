@@ -1,6 +1,6 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
-Status: approved design target; implementation has not started
+Status: implementation started; initial 16 MiB block ceiling selected
 
 ## Purpose
 
@@ -59,14 +59,44 @@ per second and a 60-second block target, a full interval can approach 6,000
 transactions and approximately 55 MB before framing overhead. Stage 7 must not
 assume that a complete block fits safely in one small network message.
 
+- The initial private-testnet consensus ceiling is exactly 16 MiB
+  (16,777,216 serialized bytes), enforced from one shared constant by block
+  decoding, contextual validation and persistent storage. P2P framing must use
+  the same constant when implemented.
 - Blocks are transferred in independently bounded chunks.
 - Chunk order, total size, block identifier and final checksum are committed
   before activation.
 - Validation streams from bounded storage rather than duplicating an entire
   block in each peer buffer.
 - In-flight bytes, chunks and block requests are limited globally and per peer.
-- Initial testnet block limits are selected from measured propagation and
-  verification results, not from the 100 TPS aspiration alone.
+- The 16 MiB ceiling is a safety bound, not a claim that the current roughly
+  9 KB transaction format can settle 100 TPS on-chain. Current encoding fits
+  roughly 1,800 two-action transactions per full block (about 30 TPS at a
+  60-second interval). Reaching the roadmap's 100 TPS settlement target without
+  restoring 55 MB blocks requires measured transaction/proof-size reduction or
+  safe aggregation; relay and verification benchmarks are reported separately.
+
+## Compact block relay and lightweight nodes
+
+The hard block ceiling is not the normal network payload target. Transactions
+are first propagated into peer mempools. When a miner announces a block, it
+sends the 160-byte header plus the ordered 256-bit transaction identifiers.
+A peer reconstructs the block from transactions it already has and requests
+only the missing indexes. The reconstructed full block must pass the ordinary
+transaction-root, proof, state and consensus checks before activation.
+
+The initial format deliberately uses full transaction identifiers. For roughly
+1,800 transactions, its block announcement is about 58 KiB instead of as much
+as 16 MiB when mempools overlap. A later measured protocol version may use
+keyed short identifiers, but only with explicit collision recovery and no
+consensus dependency on those identifiers.
+
+A lightweight Onuros node may use the same relay plus pruned historical block
+bodies. It still verifies headers, cumulative work, shielded-state transitions
+and every newly accepted block. It is not allowed to trust a relay appliance or
+replace local consensus validation. Initial synchronization still requires a
+trusted checkpoint or enough historical data to validate from genesis; that
+trade-off must be explicit rather than hidden behind the word "lightweight".
 
 ## Peer and denial-of-service controls
 
@@ -145,4 +175,3 @@ publish after removing IP addresses where appropriate.
 
 If Gate 6 or 7 fails, Stage 7 remains incomplete and measurements determine
 whether to optimize verification, block limits, relay or transaction design.
-

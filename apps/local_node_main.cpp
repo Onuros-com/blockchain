@@ -59,9 +59,9 @@ int main(int argc, char** argv) {
         if (!proof_of_work_limit)
             throw std::runtime_error("invalid local proof-of-work limit");
         LocalNodeParameters parameters;
-        parameters.validation_limits = {1U, 1U, 4U * 1024U * 1024U,
+        parameters.validation_limits = {1U, 1U, max_serialized_block_bytes,
                                         10'000U, 1024U * 1024U};
-        parameters.decode_limits = {4U * 1024U * 1024U, 10'000U,
+        parameters.decode_limits = {max_serialized_block_bytes, 10'000U,
                                     1024U * 1024U};
         parameters.difficulty.target_block_seconds = 60U;
         parameters.difficulty.retarget_interval = 60U;
