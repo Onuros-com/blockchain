@@ -139,6 +139,26 @@ int main() {
               malformed_loop.stats().protocol_failures == 1U,
               "malformed framing disconnects only offending peer");
 
+        PeerEventLoop policy_loop(limits);
+        auto policy_transport = std::make_unique<FakeTransport>();
+        policy_transport->incoming = peer_input(700U);
+        check(policy_loop.add_peer(12U, std::move(policy_transport),
+                                   policy(701U), 0U) ==
+                  PeerLoopError::none,
+              "policy peer added");
+        const auto disconnect_ping =
+            [](EventPeerId, const P2pFrame& frame) {
+                return frame.type == P2pMessageType::ping
+                    ? PeerFrameAction::disconnect : PeerFrameAction::keep;
+            };
+        policy_loop.tick_with_policy(1U, disconnect_ping);
+        check(policy_loop.peer_count() == 1U,
+              "policy retains accepted handshake");
+        policy_loop.tick_with_policy(2U, disconnect_ping);
+        check(policy_loop.peer_count() == 0U &&
+              policy_loop.stats().policy_disconnects == 1U,
+              "frame policy disconnects offending peer");
+
         PeerEventLoopLimits queue_limits = limits;
         queue_limits.resources.maximum_queued_bytes = 60U;
         PeerEventLoop queue_loop(queue_limits);
