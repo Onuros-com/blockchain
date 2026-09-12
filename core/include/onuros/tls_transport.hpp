@@ -126,4 +126,38 @@ public:
     }
 };
 
+class TlsPeerTransport final : public PeerTransport {
+    TcpConnection connection_;
+    TlsConnection tls_;
+public:
+    TlsPeerTransport(TlsContext& context, TcpConnection connection, TlsRole role)
+        : connection_(std::move(connection)), tls_(context, connection_, role) {}
+
+    TlsStatus handshake() { return tls_.handshake(); }
+    const char* cipher() const noexcept { return tls_.cipher(); }
+    SocketIoResult send_some(const std::uint8_t* data,
+                             std::size_t size) override {
+        const auto result = tls_.send_some(data, size);
+        switch (result.status) {
+            case TlsStatus::ok: return {SocketIoStatus::ok, result.bytes};
+            case TlsStatus::would_block: return {SocketIoStatus::would_block, 0U};
+            case TlsStatus::closed: return {SocketIoStatus::closed, 0U};
+            case TlsStatus::error: return {SocketIoStatus::error, 0U};
+        }
+        return {SocketIoStatus::error, 0U};
+    }
+    SocketIoResult receive_some(std::uint8_t* data,
+                                std::size_t size) override {
+        const auto result = tls_.receive_some(data, size);
+        switch (result.status) {
+            case TlsStatus::ok: return {SocketIoStatus::ok, result.bytes};
+            case TlsStatus::would_block: return {SocketIoStatus::would_block, 0U};
+            case TlsStatus::closed: return {SocketIoStatus::closed, 0U};
+            case TlsStatus::error: return {SocketIoStatus::error, 0U};
+        }
+        return {SocketIoStatus::error, 0U};
+    }
+    bool authenticated() const noexcept override { return tls_.authenticated(); }
+};
+
 } // namespace onuros

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -161,6 +162,32 @@ public:
         if (socket_would_block()) return {SocketIoStatus::would_block, 0U};
         return {SocketIoStatus::error, 0U};
     }
+};
+
+class PeerTransport {
+public:
+    virtual ~PeerTransport() = default;
+    virtual SocketIoResult send_some(const std::uint8_t* data,
+                                     std::size_t size) = 0;
+    virtual SocketIoResult receive_some(std::uint8_t* data,
+                                        std::size_t size) = 0;
+    virtual bool authenticated() const noexcept = 0;
+};
+
+class TcpPeerTransport final : public PeerTransport {
+    TcpConnection connection_;
+public:
+    explicit TcpPeerTransport(TcpConnection connection)
+        : connection_(std::move(connection)) {}
+    SocketIoResult send_some(const std::uint8_t* data,
+                             std::size_t size) override {
+        return connection_.send_some(data, size);
+    }
+    SocketIoResult receive_some(std::uint8_t* data,
+                                std::size_t size) override {
+        return connection_.receive_some(data, size);
+    }
+    bool authenticated() const noexcept override { return false; }
 };
 
 class TcpListener {

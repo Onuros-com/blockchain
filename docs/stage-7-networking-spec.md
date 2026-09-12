@@ -3,8 +3,9 @@
 Status: protocol engine, nonblocking TCP primitives, live loopback relay,
 three-process synchronization, live headers-first validation, single-owner
 download coordination, resumable chunk checkpoints, persistent peer discovery
-and mutually authenticated TLS 1.3 transport implemented; production peer event
-loop and independent-machine testing remain open
+and mutually authenticated TLS 1.3 transport implemented. The bounded multi-peer
+event loop now accepts both raw private-test transports and authenticated TLS;
+Windows and independent-machine testing remain open
 
 ## Purpose
 
@@ -150,6 +151,15 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   both peers and validated against an operator-configured trust root. TLS
   compression and renegotiation are disabled. Tests generate temporary
   one-day credentials; no private key is committed to the repository.
+- The multi-peer event loop applies per-peer read, write and frame budgets,
+  bounded send queues, handshake and idle deadlines, partial-write recovery,
+  malformed-peer isolation, traffic counters and clean shutdown. Its transport
+  interface admits TLS only after the cryptographic handshake has completed;
+  the protocol handshake can require that authenticated state.
+- Core CI now runs for every Stage 7 branch on both Ubuntu and Windows Server.
+  Platform-neutral unit and live socket tests run on Windows; Bash orchestration
+  tests remain Linux-only. A green Windows job is required before the Windows
+  execution gate is marked complete.
 
 The 1,800-transaction benchmark (9,173 encoded bytes per transaction) measured
 the following block-relay phase. These figures exclude the earlier transaction
@@ -162,9 +172,10 @@ gossip that populated each peer's mempool:
 | 90% | 1,710,744 | 89.64% |
 | 100% | 57,764 | 99.65% |
 
-This checkpoint does not complete Stage 7. The TLS connection must still be
-wired into the production multi-peer event loop; independent-machine testing
-and the sustained ten-minute private-transaction gate are also required. The
+This checkpoint does not complete Stage 7. The loop must still be integrated
+with the full node's chain-state callbacks; Windows execution,
+independent-machine testing and the sustained ten-minute private-transaction
+gate are also required. The
 cross-platform code is structured for Winsock and links `ws2_32`, but Windows
 execution remains a required CI/hardware gate.
 

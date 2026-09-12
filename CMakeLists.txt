@@ -17,7 +17,7 @@ if(ONUROS_ORCHARD_FFI_LIBRARY)
   target_link_libraries(onuros_core INTERFACE "${ONUROS_ORCHARD_FFI_LIBRARY}")
 endif()
 
-set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test)
+set(ONUROS_TESTS economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test)
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   list(APPEND ONUROS_TESTS private_node_orchard_pipeline_test)
 endif()
@@ -76,6 +76,7 @@ add_test(NAME p2p_protocol COMMAND p2p_protocol_test)
 add_test(NAME p2p_transport COMMAND p2p_transport_test)
 add_test(NAME peer_manager COMMAND peer_manager_test)
 add_test(NAME peer_store COMMAND peer_store_test)
+add_test(NAME peer_event_loop COMMAND peer_event_loop_test)
 add_test(NAME block_transfer COMMAND block_transfer_test)
 add_test(NAME stage7_relay COMMAND stage7_relay_test)
 add_test(NAME header_sync COMMAND header_sync_test)
@@ -97,10 +98,12 @@ add_test(NAME private_mempool COMMAND private_mempool_test)
 add_test(NAME private_block COMMAND private_block_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
-add_test(NAME stage7_three_process COMMAND bash
-         ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
-         $<TARGET_FILE:onuros_stage7_network_node>
-         ${CMAKE_CURRENT_BINARY_DIR}/stage7-three-process)
+if(NOT WIN32)
+  add_test(NAME stage7_three_process COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-three-process.sh
+           $<TARGET_FILE:onuros_stage7_network_node>
+           ${CMAKE_CURRENT_BINARY_DIR}/stage7-three-process)
+endif()
 if(OpenSSL_FOUND AND NOT WIN32)
   add_test(NAME stage7_mutual_tls COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-tls-loopback.sh
