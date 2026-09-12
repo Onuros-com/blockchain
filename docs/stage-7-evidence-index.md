@@ -15,11 +15,17 @@ audit points.
 | 4. Competing branches converge by work | Chain-index tests and private commit coordinator tests cover a stronger-branch reorganization and restart after the block database switches | Automated gate passed |
 | 5. Malformed, oversized and flooding traffic remains bounded | Frame decoder, event loop, admission, block transfer, fuzz, per-tick flood, sanitizer, and peer-policy tests in run 34704080168 | Automated gate passed |
 | 6. 100 unique valid private transactions/s for 600 s across three published nodes | Real Orchard fixture verification sustained 120.218/s for 600.033 s; the real-FFI/TLS load executable and common-anchor corpus generator are implemented | Tooling implemented; physical 66,000-transaction run pending |
-| 7. Near-16 MiB block propagation and validation | `stage7_block_limit` passed in run 34704080168; the real-FFI/TLS compact-block sender and durable receiver are implemented | Tooling implemented; two physical receiver runs pending |
+| 7. Near-16 MiB safety-bound propagation and validation | `stage7_block_limit` passed in run 34704080168; the real-FFI/TLS compact-block sender and durable receiver are implemented | Tooling implemented; physical run held for the agreed scalability and storage policy |
 | 8. Crash-safe shutdown, restart and synchronization | Checksummed commit journal, durable ordering, corrupt-journal rejection, reorg recovery, event-loop clean shutdown | Automated gate passed |
 | 9. Protocol, threat model, operator procedure and raw evidence | Networking specification, recovery design, threat model, independent TLS runbook, performance qualification, and GCP verifier log are committed | Documentation present; physical Gate 6/7 evidence pending |
 
 ## Automated workflow references
+
+The agreed [Stage 7 scalability and storage hardening](stage-7-scalability-hardening.md)
+extension preserves the original roadmap and sequences byte accounting,
+compact batching, safe pruning, authenticated snapshots and sustainable block
+production before physical Gate 7 acceptance. Proof aggregation remains a
+separate research and review item; no second execution layer is introduced.
 
 - Core workflow run
   [34704364613](https://github.com/Onuros-com/blockchain/actions/runs/34704364613)
@@ -115,6 +121,15 @@ replace Stage 7 network Gates 6 or 7.
   near-limit reconstruction/validation regression.
 - `docs/stage-7-performance-qualification.md`: physical Gate 6 and Gate 7
   evidence contract.
+
+## Evidence still required
+
+1. Three-node, 600-second manifests for at least 60,000 distinct transactions
+   that pass the real Orchard verifier.
+2. Published-node near-limit block logs showing canonical size, mempool overlap,
+   transfer bytes, independent validation, durable activation, restart state,
+   and no more than 30.000 seconds per receiver.
+3. Reviewer audit points and their resolution links.
 
 ## Evidence still required
 

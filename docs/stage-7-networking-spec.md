@@ -86,6 +86,10 @@ assume that a complete block fits safely in one small network message.
   60-second interval). Reaching the roadmap's 100 TPS settlement target without
   restoring 55 MB blocks requires measured transaction/proof-size reduction or
   safe aggregation; relay and verification benchmarks are reported separately.
+- The ceiling is also not a production-size target. Sustained production is
+  governed by the rolling budget and burst policy defined through the
+  [Stage 7 scalability and storage hardening](stage-7-scalability-hardening.md)
+  extension before testnet activation.
 
 ## Compact block relay and lightweight nodes
 
@@ -348,3 +352,8 @@ publish after removing IP addresses where appropriate.
 
 If Gate 6 or 7 fails, Stage 7 remains incomplete and measurements determine
 whether to optimize verification, block limits, relay or transaction design.
+
+The scalability and storage hardening extension is part of this stage. It adds
+transaction byte accounting, compact batching, conditional pruning,
+authenticated snapshots and a measured block-production policy without
+renumbering or replacing the original roadmap.

@@ -71,6 +71,11 @@ Gate 6.
 
 ## Gate 7: near-limit block propagation
 
+This gate tests behavior at the absolute safety boundary. Passing it does not
+recommend or activate sustained 16 MiB production. Physical qualification is
+held until the Stage 7 scalability hardening work defines the normal rolling
+budget and burst allowance from measured storage and propagation results.
+
 ### Payload
 
 Construct a valid block between 99% and 100% of the 16,777,216-byte consensus

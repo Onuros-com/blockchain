@@ -60,5 +60,11 @@ Physical AMD/NVIDIA evidence is complete. Integrating this boundary with the
 full node, then adding authenticated public binding and submission rate limits,
 remain later Stage 7 checkpoints.
 
+Stage 7 also includes the agreed
+[scalability and storage hardening extension](docs/stage-7-scalability-hardening.md):
+transaction byte accounting, compact batching, conditional pruning,
+authenticated snapshots and a measured sustainable block-production policy.
+This work preserves the original single Layer-1 roadmap.
+
 This remains pre-mainnet software. Passing tests and measured throughput do not
 constitute a security audit or readiness for real funds.
