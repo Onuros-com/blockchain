@@ -37,26 +37,28 @@ sanitizer builds run in GitHub Actions.
 Read the [Stage 6 completion report](docs/stage-6-completion-report.md),
 [Stage 6 threat model](docs/stage-6-threat-model.md), and
 [Stage 7 networking specification](docs/stage-7-networking-spec.md). Stage 4's
-hardware evidence and remaining integration boundary are tracked separately in
-the [validation record](docs/stage-4-deferred-validation.md); hardware execution
-does not turn the deterministic local proof-of-work engine into production
-KawPoW.
+hardware and GPU-to-node qualification evidence is tracked separately in the
+[validation record](docs/stage-4-deferred-validation.md). That completed
+prototype gate does not by itself make the public mining transport or desktop
+miner production-ready.
 
 The Stage 4 recovery work adds a pinned KawPoW 0.9.4 CPU consensus verifier,
 published vectors, invalid-mix rejection in the node path, and an
-[AMD qualification runbook](docs/stage-4-amd-runbook.md). The MI300X ROCm/HIP
-smoke and sustained KawPoW hardware gates passed. Direct submission of a GPU
-candidate into the Onuros CPU verifier remains the Stage 7 integration gate.
-See the [Stage 4 audit record](docs/stage-4-audit.md) for the exact closed and
-deferred findings.
+[AMD qualification runbook](docs/stage-4-amd-runbook.md). The MI300X ROCm/OpenCL and RTX 3060 CUDA workers both submitted physical GPU
+candidates that the Onuros CPU verifier independently accepted after rejecting
+a deliberately invalid probe. The hashed raw evidence is preserved in the
+separate [Onuros-miner repository](https://github.com/Onuros-com/Onuros-miner).
+See the [Stage 4 audit record](docs/stage-4-audit.md) for the exact completed
+scope and later production hardening.
 
 The first Stage 7 mining-endpoint checkpoint now defines bounded, versioned
 KawPoW job/solution/result messages and a loopback TCP service. It retains the
 full block template inside the node, rejects stale or replayed jobs, and admits
 only solutions recomputed by the CPU verifier. It can keep one job active after
 an invalid qualification probe and subsequently accept a valid GPU submission.
-Public binding, TLS, rate limits and completed physical AMD/NVIDIA evidence
-remain later checkpoints.
+Physical AMD/NVIDIA evidence is complete. Integrating this boundary with the
+full node, then adding authenticated public binding and submission rate limits,
+remain later Stage 7 checkpoints.
 
 This remains pre-mainnet software. Passing tests and measured throughput do not
 constitute a security audit or readiness for real funds.
