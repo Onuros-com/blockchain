@@ -3,7 +3,11 @@ set -euo pipefail
 
 readonly binary="${1:-./build/onuros-mining-endpoint}"
 readonly evidence_root="${2:-$(mktemp -d)}"
-readonly base_port="${ONUROS_MINING_TEST_PORT:-38555}"
+# WSL2 virtioProxy can retain a closed fixed-port mapping briefly, while some
+# versions also refuse listeners created with port zero. Select a fresh bounded
+# fixed port for each run and retain the environment override for reproducible
+# diagnostics.
+readonly base_port="${ONUROS_MINING_TEST_PORT:-$((40000 + RANDOM % 8000))}"
 
 mkdir -p "$evidence_root"
 readonly evidence_dir="$(mktemp -d "$evidence_root/run.XXXXXX")"
