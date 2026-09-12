@@ -1,7 +1,8 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
-Status: protocol engine and deterministic multi-node harness implemented;
-production socket transport and independent-machine testing remain open
+Status: protocol engine, nonblocking TCP primitives, live loopback relay and
+deterministic multi-node harness implemented; production peer event loop,
+encrypted transport and independent-machine testing remain open
 
 ## Purpose
 
@@ -103,10 +104,17 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
 
 - Canonical checksummed P2P frames with network magic, protocol negotiation,
   message type, request identifier and pre-allocation payload bounds.
+- Cross-platform IPv4 TCP listener/connection wrappers with nonblocking I/O and
+  a bounded incremental stream decoder. A real loopback test exchanges a
+  fragmented handshake, transaction inventory, compact block, missing-index
+  request and transaction chunk in both directions.
 - Handshake rejection for wrong chain/genesis, self-connections, incompatible
   versions, missing services and unauthenticated transport when public-mode
   policy requires it. Transport encryption itself is not yet implemented.
 - Bounded transaction inventory with duplicate suppression.
+- Global/per-address connection ceilings, handshake/idle deadlines, bounded
+  queues, request and validation-job backpressure, misbehavior scoring and
+  temporary bans.
 - Compact block reconstruction from validated relay-pool transactions.
 - Ordered missing-transaction requests and bounded multi-chunk responses with
   consistent manifests, byte/count ceilings and transaction-ID verification.
@@ -127,10 +135,12 @@ gossip that populated each peer's mempool:
 | 90% | 1,710,744 | 89.64% |
 | 100% | 57,764 | 99.65% |
 
-This checkpoint does not complete Stage 7. Real asynchronous sockets,
-authenticated encrypted transport, peer lifecycle/rate limiting, live
-multi-process synchronization, independent-machine testing and the sustained
-ten-minute private-transaction gate are still required.
+This checkpoint does not complete Stage 7. A production event loop around the
+nonblocking sockets, authenticated encrypted transport, persisted peer
+discovery, live multi-process synchronization, independent-machine testing and
+the sustained ten-minute private-transaction gate are still required. The
+cross-platform code is structured for Winsock and links `ws2_32`, but Windows
+execution remains a required CI/hardware gate.
 
 ## Peer and denial-of-service controls
 
