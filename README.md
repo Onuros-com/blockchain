@@ -53,8 +53,10 @@ deferred findings.
 The first Stage 7 mining-endpoint checkpoint now defines bounded, versioned
 KawPoW job/solution/result messages and a loopback TCP service. It retains the
 full block template inside the node, rejects stale or replayed jobs, and admits
-only solutions recomputed by the CPU verifier. Public binding, TLS, rate limits
-and an AMD/NVIDIA `Onuros-miner` client remain later checkpoints.
+only solutions recomputed by the CPU verifier. It can keep one job active after
+an invalid qualification probe and subsequently accept a valid GPU submission.
+Public binding, TLS, rate limits and completed physical AMD/NVIDIA evidence
+remain later checkpoints.
 
 This remains pre-mainnet software. Passing tests and measured throughput do not
 constitute a security audit or readiness for real funds.

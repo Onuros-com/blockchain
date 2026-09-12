@@ -25,7 +25,10 @@ proof-of-work path. A dedicated loopback mining endpoint now connects bounded
 wire candidates to `onuros_kawpow` with fail-closed error handling and tests
 valid acceptance plus altered-candidate rejection across two processes. Public
 authenticated binding, the separate `Onuros-miner` GPU client and a short AMD
-rerun remain before the final integration gate can close.
+rerun remain before the final integration gate can close. The loopback Stratum
+qualification bridge and two-submission node sequence are implemented, but the
+physical AMD/OpenCL and NVIDIA/CUDA evidence checkboxes remain open until both
+raw runs are reviewed.
 
 Passing this audit does not constitute a security audit, mainnet readiness or a
 guarantee that production thermal and power limits are suitable.

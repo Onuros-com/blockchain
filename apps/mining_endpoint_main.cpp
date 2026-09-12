@@ -77,7 +77,8 @@ std::optional<TcpConnection> connect_with_retry(std::uint16_t port) {
     return std::nullopt;
 }
 
-void run_server(const std::filesystem::path& data, std::uint16_t port) {
+void run_server(const std::filesystem::path& data, std::uint16_t port,
+                unsigned maximum_submissions) {
     KawpowMiningEndpoint endpoint(parameters());
     if (endpoint.open(data).error != LocalNodeError::none)
         throw std::runtime_error("mining database open failed");
@@ -104,24 +105,29 @@ void run_server(const std::filesystem::path& data, std::uint16_t port) {
                encode_mining_job(*job));
 
     FrameStreamDecoder stream({}, 4096U);
-    const auto frame = receive_frame(*connection, stream);
-    if (frame.type != P2pMessageType::mining_solution ||
-        frame.request_id != job->job_id)
-        throw std::runtime_error("unexpected mining solution frame");
-    const auto solution = decode_mining_solution(frame.payload);
-    MiningSubmitResult submitted{MiningSubmitError::node_rejected};
-    if (solution) submitted = endpoint.submit(*solution, timestamp);
-    const auto result = make_mining_result_message(job->job_id, submitted);
-    send_frame(*connection, P2pMessageType::mining_result, job->job_id,
-               encode_mining_result(result));
-    std::cout << (result.code == MiningResultCode::accepted ?
-                  "ACCEPTED" : "REJECTED")
-              << " job=" << job->job_id
-              << " height=" << job->height
-              << " block=" << hash_hex(result.block_identifier) << std::endl;
+    for (unsigned attempt = 0U; attempt < maximum_submissions; ++attempt) {
+        const auto frame = receive_frame(*connection, stream);
+        if (frame.type != P2pMessageType::mining_solution ||
+            frame.request_id != job->job_id)
+            throw std::runtime_error("unexpected mining solution frame");
+        const auto solution = decode_mining_solution(frame.payload);
+        MiningSubmitResult submitted{MiningSubmitError::node_rejected};
+        if (solution) submitted = endpoint.submit(*solution, timestamp);
+        const auto result = make_mining_result_message(job->job_id, submitted);
+        send_frame(*connection, P2pMessageType::mining_result, job->job_id,
+                   encode_mining_result(result));
+        std::cout << (result.code == MiningResultCode::accepted ?
+                      "ACCEPTED" : "REJECTED")
+                  << " job=" << job->job_id
+                  << " height=" << job->height
+                  << " submission=" << attempt + 1U
+                  << " result_code=" << static_cast<unsigned>(result.code)
+                  << " block=" << hash_hex(result.block_identifier) << std::endl;
+        if (result.code == MiningResultCode::accepted) break;
+    }
 }
 
-void run_client(std::uint16_t port, bool alter_mix) {
+void run_client(std::uint16_t port, bool alter_mix, bool negative_probe) {
     auto connection = connect_with_retry(port);
     if (!connection) throw std::runtime_error("mining connect timeout");
     FrameStreamDecoder stream({}, 4096U);
@@ -149,6 +155,19 @@ void run_client(std::uint16_t port, bool alter_mix) {
         ++solution.nonce;
     }
     if (!solved) throw std::runtime_error("KawPoW nonce limit exhausted");
+    if (negative_probe) {
+        auto invalid = solution;
+        invalid.mix_hash[0] ^= 1U;
+        send_frame(*connection, P2pMessageType::mining_solution, job->job_id,
+                   encode_mining_solution(invalid));
+        const auto invalid_frame = receive_frame(*connection, stream);
+        const auto invalid_result = decode_mining_result(invalid_frame.payload);
+        if (invalid_frame.type != P2pMessageType::mining_result ||
+            invalid_frame.request_id != job->job_id || !invalid_result ||
+            invalid_result->code != MiningResultCode::invalid_proof)
+            throw std::runtime_error("negative probe was not rejected");
+        std::cout << "EXPECTED_REJECTION job=" << job->job_id << std::endl;
+    }
     if (alter_mix) solution.mix_hash[0] ^= 1U;
     send_frame(*connection, P2pMessageType::mining_solution, job->job_id,
                encode_mining_solution(solution));
@@ -170,7 +189,7 @@ void run_client(std::uint16_t port, bool alter_mix) {
 void usage(const char* program) {
     std::cerr << "Usage: " << program
               << " --role server|client --port PORT [--data PATH]"
-                 " [--alter-mix]\n";
+                 " [--alter-mix|--negative-probe] [--submissions COUNT]\n";
 }
 
 } // namespace
@@ -180,7 +199,9 @@ int main(int argc, char** argv) {
         std::string role;
         std::filesystem::path data;
         std::uint16_t port = 0U;
+        unsigned maximum_submissions = 1U;
         bool alter_mix = false;
+        bool negative_probe = false;
         for (int i = 1; i < argc; ++i) {
             const std::string argument = argv[i];
             if (argument == "--role" && i + 1 < argc) role = argv[++i];
@@ -191,16 +212,24 @@ int main(int argc, char** argv) {
                     throw std::invalid_argument("invalid port");
                 port = static_cast<std::uint16_t>(value);
             } else if (argument == "--alter-mix") alter_mix = true;
+            else if (argument == "--negative-probe") negative_probe = true;
+            else if (argument == "--submissions" && i + 1 < argc) {
+                const auto value = std::stoul(argv[++i]);
+                if (value == 0U || value > 100U)
+                    throw std::invalid_argument("invalid submission count");
+                maximum_submissions = static_cast<unsigned>(value);
+            }
             else throw std::invalid_argument("unknown or incomplete argument");
         }
         if (port == 0U || (role != "server" && role != "client") ||
             (role == "server" && data.empty()) ||
-            (role == "server" && alter_mix))
+            (role == "server" && (alter_mix || negative_probe)) ||
+            (alter_mix && negative_probe))
             throw std::invalid_argument("required argument missing");
         SocketRuntime runtime;
         if (!runtime.ready()) throw std::runtime_error("socket runtime failed");
-        if (role == "server") run_server(data, port);
-        else run_client(port, alter_mix);
+        if (role == "server") run_server(data, port, maximum_submissions);
+        else run_client(port, alter_mix, negative_probe);
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "ERROR: " << error.what() << '\n';

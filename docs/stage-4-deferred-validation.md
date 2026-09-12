@@ -46,9 +46,13 @@ Before calling the mining path production-integrated:
 - repeat a short AMD run against that endpoint.
 
 The bounded wire protocol, stale/replay rejection and valid/altered two-process
-loopback tests are implemented. The remaining tasks extend that Stage 7 work;
-they do not change the roadmap or invalidate the completed MI300X execution
-evidence.
+loopback tests are implemented. The endpoint now also supports the precise
+qualification sequence of one expected invalid probe followed by one valid
+submission on the same retained job. The separate `Onuros-miner` bridge records
+accepted, unexpected-rejected and expected-invalid counts. Physical AMD and
+NVIDIA runs are still unmarked until their raw artifacts pass that gate. These
+tasks extend Stage 7 without changing the roadmap or invalidating the completed
+standalone MI300X execution evidence.
 
 ## Later hardware hardening
 

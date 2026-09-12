@@ -171,11 +171,17 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
 
 ### Mining endpoint boundary
 
-The initial executable listens on loopback only and processes one bounded
-solution per connection. This is intentional: it proves the consensus boundary
+The initial executable listens on loopback only and processes a configured,
+strictly bounded number of solutions per connection. This is intentional: it proves the consensus boundary
 without exposing an unauthenticated expensive-verification service. Before
 public or independent-machine use, the same message payloads must run over the
 authenticated TLS transport with per-peer and per-address submission limits.
+
+For physical qualification only, the endpoint may process two bounded
+submissions on its single loopback connection: an expected invalid-proof probe
+followed by a valid GPU share. The active job is retained after the invalid
+probe and cleared after acceptance. This does not expand the listener beyond
+loopback or make the external worker authoritative.
 
 AMD and NVIDIA workers will live together in the separate `Onuros-miner`
 repository. The node and CPU verifier remain in this repository. Packaging may

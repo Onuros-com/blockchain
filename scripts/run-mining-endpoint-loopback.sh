@@ -34,6 +34,20 @@ run_case() {
 
 run_case valid "$base_port" ACCEPTED
 run_case altered "$((base_port + 1))" REJECTED --alter-mix
+"$binary" --role server --data "$evidence_dir/probed.db" \
+  --port "$((base_port + 2))" --submissions 2 \
+  >"$evidence_dir/probed-server.log" 2>&1 &
+server_pid=$!
+"$binary" --role client --port "$((base_port + 2))" --negative-probe \
+  >"$evidence_dir/probed-client.log" 2>&1
+wait "$server_pid"
+server_pid=''
+grep -q '^REJECTED job=.*submission=1 result_code=2' \
+  "$evidence_dir/probed-server.log"
+grep -q '^ACCEPTED job=.*submission=2 result_code=0' \
+  "$evidence_dir/probed-server.log"
+grep -q '^EXPECTED_REJECTION job=' "$evidence_dir/probed-client.log"
+grep -q '^ACCEPTED job=' "$evidence_dir/probed-client.log"
 
 echo "Stage 7 KawPoW mining endpoint loopback passed"
 echo "Evidence: $evidence_dir"
