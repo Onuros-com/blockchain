@@ -138,6 +138,8 @@ add_test(NAME kawpow COMMAND kawpow_test)
 add_test(NAME mining_endpoint COMMAND mining_endpoint_test)
 add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
+add_test(NAME stage7_block_limit COMMAND onuros_stage7_bandwidth_benchmark)
+set_tests_properties(stage7_block_limit PROPERTIES TIMEOUT 120)
 if(NOT WIN32)
   add_test(NAME amd_kawpow_log_parser COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/tests/amd_kawpow_log_parser_test.sh
