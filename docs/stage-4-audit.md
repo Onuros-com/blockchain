@@ -1,9 +1,10 @@
 # Stage 4 audit record
 
-The 12 September 2026 audit gives Stage 4 a conditional pass: the pinned CPU
-KawPoW consensus implementation and AMD MI300X execution evidence are sound for
-their tested scope. End-to-end GPU-to-node consensus integration remains a
-Stage 7 gate.
+The 12 September 2026 audit gives Stage 4 a final pass for its prototype scope.
+The pinned CPU KawPoW consensus implementation, AMD MI300X OpenCL execution and
+NVIDIA RTX 3060 CUDA execution are sound for their tested scope. Both physical
+workers crossed the separate-process boundary and produced candidates accepted
+only after independent Onuros CPU verification.
 
 ## Closed by this audit
 
@@ -18,17 +19,23 @@ Stage 7 gate.
   only its test executable.
 - Core CI watches KawPoW scripts and the vendored consensus source tree.
 
+## Closed physical integration gate
+
+The dedicated loopback mining endpoint connects bounded wire candidates to
+`onuros_kawpow` with fail-closed error handling. The qualification bridge sent
+one deliberately invalid probe and one physical GPU share for each backend.
+Both AMD/OpenCL and NVIDIA/CUDA runs recorded one accepted share, zero
+unexpected rejected shares and one expected invalid rejection. Raw logs,
+environment manifests, binary hashes and throughput evidence are preserved in
+the separate `Onuros-miner` repository.
+
 ## Explicitly deferred to Stage 7
 
-The general Stage 7 synchronization harness still uses its deterministic test
-proof-of-work path. A dedicated loopback mining endpoint now connects bounded
-wire candidates to `onuros_kawpow` with fail-closed error handling and tests
-valid acceptance plus altered-candidate rejection across two processes. Public
-authenticated binding, the separate `Onuros-miner` GPU client and a short AMD
-rerun remain before the final integration gate can close. The loopback Stratum
-qualification bridge and two-submission node sequence are implemented, but the
-physical AMD/OpenCL and NVIDIA/CUDA evidence checkboxes remain open until both
-raw runs are reviewed.
+The general synchronization harness still uses its deterministic test
+proof-of-work path. Stage 7 must integrate the bounded networking event loop
+with the full node's real chain-state, mempool and shielded-state callbacks.
+Public or independent-machine mining also requires authenticated TLS transport
+and per-peer and per-address submission limits.
 
 Passing this audit does not constitute a security audit, mainnet readiness or a
 guarantee that production thermal and power limits are suitable.
