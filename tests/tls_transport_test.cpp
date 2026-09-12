@@ -35,9 +35,9 @@ int main(int argc, char** argv) {
         }
         check(client_socket && server_socket, "TLS TCP peers connect");
         auto client = std::make_unique<TlsPeerTransport>(
-            *client_context, std::move(*client_socket), TlsRole::client);
+            *client_context, std::move(*client_socket), TlsRole::client, "onuros-server");
         auto server = std::make_unique<TlsPeerTransport>(
-            *server_context, std::move(*server_socket), TlsRole::server);
+            *server_context, std::move(*server_socket), TlsRole::server, "onuros-client");
         for (unsigned i = 0U; i < 10'000U &&
                 (!client->authenticated() || !server->authenticated()); ++i) {
             if (!client->authenticated() && client->handshake() == TlsStatus::error)
