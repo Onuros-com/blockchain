@@ -213,8 +213,9 @@ public:
         return *this;
     }
 
-    static std::optional<TcpListener> listen_loopback(
-            std::uint16_t requested_port = 0U, int backlog = 16) {
+    static std::optional<TcpListener> listen_ipv4(
+            const std::string& address, std::uint16_t requested_port = 0U,
+            int backlog = 16) {
         const auto socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (socket == invalid_socket) return std::nullopt;
         int reuse = 1;
@@ -228,8 +229,8 @@ public:
         sockaddr_in endpoint{};
         endpoint.sin_family = AF_INET;
         endpoint.sin_port = htons(requested_port);
-        endpoint.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        if (::bind(socket, reinterpret_cast<const sockaddr*>(&endpoint),
+        if (inet_pton(AF_INET, address.c_str(), &endpoint.sin_addr) != 1 ||
+            ::bind(socket, reinterpret_cast<const sockaddr*>(&endpoint),
                    static_cast<NativeSocketLength>(sizeof(endpoint))) != 0 ||
             ::listen(socket, backlog) != 0 ||
             !set_socket_nonblocking(socket)) {
@@ -247,6 +248,11 @@ public:
         listener.socket_ = socket;
         listener.port_ = ntohs(bound.sin_port);
         return listener;
+    }
+
+    static std::optional<TcpListener> listen_loopback(
+            std::uint16_t requested_port = 0U, int backlog = 16) {
+        return listen_ipv4("127.0.0.1", requested_port, backlog);
     }
 
     std::optional<TcpConnection> accept_one() {
