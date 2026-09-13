@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <vector>
 
@@ -10,9 +11,15 @@ namespace {
 
 using namespace onuros;
 
-void check(bool condition) {
-    if (!condition) std::abort();
+void check_impl(bool condition, int line) {
+    if (!condition) {
+        std::cerr << "persistent shielded state check failed at line "
+                  << line << '\n';
+        std::abort();
+    }
 }
+
+#define check(condition) check_impl((condition), __LINE__)
 
 Hash256 value(std::uint8_t byte) {
     Hash256 result{};
@@ -54,6 +61,33 @@ std::vector<std::uint8_t> read_file(const std::filesystem::path& path) {
             std::istreambuf_iterator<char>()};
 }
 
+std::vector<std::uint8_t> encode_legacy(const ShieldedSnapshot& snapshot) {
+    std::vector<std::uint8_t> payload;
+    detail::append_hash(payload, snapshot.genesis_block);
+    detail::append_hash(payload, snapshot.genesis_root);
+    detail::append_hash(payload, snapshot.tip_block);
+    detail::append_hash(payload, snapshot.current_root);
+    shielded_store_detail::append_hashes(payload, snapshot.nullifiers);
+    shielded_store_detail::append_hashes(payload, snapshot.commitments);
+    detail::append_u32(payload,
+                       static_cast<std::uint32_t>(snapshot.history.size()));
+    for (const auto& undo : snapshot.history) {
+        detail::append_hash(payload, undo.block_id);
+        detail::append_hash(payload, undo.parent_block);
+        detail::append_hash(payload, undo.previous_root);
+        detail::append_hash(payload, undo.resulting_root);
+        shielded_store_detail::append_hashes(payload, undo.nullifiers);
+        shielded_store_detail::append_hashes(payload, undo.commitments);
+    }
+    std::vector<std::uint8_t> bytes(
+        shielded_store_detail::legacy_magic.begin(),
+        shielded_store_detail::legacy_magic.end());
+    detail::append_u32(bytes, static_cast<std::uint32_t>(payload.size()));
+    bytes.insert(bytes.end(), payload.begin(), payload.end());
+    detail::append_hash(bytes, double_sha256(bytes));
+    return bytes;
+}
+
 } // namespace
 
 int main() {
@@ -80,6 +114,13 @@ int main() {
     check(store.connect(block_two, root_two, second) == ShieldedStoreError::none);
     check(store.state().height() == 2U && store.state().tip() == block_two);
 
+    const auto legacy_bytes = encode_legacy(store.state().snapshot());
+    const auto legacy = shielded_store_detail::decode(legacy_bytes, 100U);
+    check(legacy && legacy->height == 2U &&
+          legacy->history_base_height == 0U &&
+          legacy->ordered_commitments.size() == 2U &&
+          legacy->ordered_roots.size() == 3U);
+
     PersistentShieldedState restarted(genesis, genesis_root, 1U << 20U, 100U);
     check(restarted.open(path) == ShieldedStoreError::none);
     check(restarted.state().tip() == block_two &&
@@ -102,10 +143,45 @@ int main() {
           !restarted.state().spent(value(41U)) &&
           restarted.state().spent(value(51U)));
 
-    const auto stable_bytes = read_file(path);
-    check(restarted.reorg({value(99U)}, {}) ==
+    PruningCheckpoint checkpoint;
+    checkpoint.genesis = genesis;
+    checkpoint.active_tip = value(14U);
+    checkpoint.shielded_root = value(16U);
+    checkpoint.tip_height = 2U;
+    checkpoint.finality_depth = 1U;
+    checkpoint.reorganization_window = 1U;
+    checkpoint.prune_below_height = 2U;
+    auto wrong_checkpoint = checkpoint;
+    wrong_checkpoint.shielded_root = value(99U);
+    check(restarted.retain_undo_history(wrong_checkpoint) ==
+          ShieldedStoreError::checkpoint_mismatch);
+    check(restarted.retain_undo_history(checkpoint) ==
+          ShieldedStoreError::none);
+    check(restarted.state().height() == 2U &&
+          restarted.state().history().size() == 1U &&
+          restarted.state().history_base_height() == 1U &&
+          restarted.state().undo_retention_limit() == 1U);
+    check(restarted.state().has_anchor(genesis_root) &&
+          restarted.state().has_anchor(value(15U)) &&
+          restarted.state().has_anchor(value(16U)));
+
+    PersistentShieldedState retained_restart(
+        genesis, genesis_root, 1U << 20U, 100U);
+    check(retained_restart.open(path) == ShieldedStoreError::none);
+    check(retained_restart.state().height() == 2U &&
+          retained_restart.state().history().size() == 1U &&
+          retained_restart.state().tip() == value(14U));
+    check(retained_restart.disconnect(value(14U)) == ShieldedStoreError::none);
+    check(retained_restart.disconnect(value(13U)) ==
           ShieldedStoreError::state_transition_failed);
-    check(restarted.state().tip() == value(14U));
+    const auto restored_second = prepare(retained_restart.state(), 12U);
+    check(retained_restart.connect(value(14U), value(16U), restored_second) ==
+          ShieldedStoreError::none);
+
+    const auto stable_bytes = read_file(path);
+    check(retained_restart.reorg({value(99U)}, {}) ==
+          ShieldedStoreError::state_transition_failed);
+    check(retained_restart.state().tip() == value(14U));
     check(read_file(path) == stable_bytes);
 
     PersistentShieldedState wrong_genesis(value(99U), genesis_root,

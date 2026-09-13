@@ -69,6 +69,7 @@ enum class PrivateAdmissionError {
     stale_preparation,
     duplicate_block,
     disconnect_past_genesis,
+    disconnect_past_retained_history,
     disconnect_order_mismatch
 };
 
@@ -88,7 +89,15 @@ struct ShieldedSnapshot {
     Hash256 current_root{};
     std::vector<Hash256> nullifiers;
     std::vector<Hash256> commitments;
+    std::vector<Hash256> ordered_commitments;
+    std::vector<Hash256> ordered_roots;
     std::vector<ShieldedUndo> history;
+    std::uint64_t height = 0U;
+    std::uint64_t history_base_height = 0U;
+    Hash256 history_base_block{};
+    Hash256 history_base_root{};
+    std::uint64_t undo_retention_limit =
+        std::numeric_limits<std::uint64_t>::max();
 };
 
 class ShieldedState;
@@ -166,8 +175,16 @@ class ShieldedState {
     Hash256 current_root_{};
     std::set<Hash256> nullifiers_;
     std::set<Hash256> commitments_;
+    std::vector<Hash256> ordered_commitments_;
+    std::vector<Hash256> ordered_roots_;
     std::map<Hash256, std::size_t> active_roots_;
     std::vector<ShieldedUndo> history_;
+    std::uint64_t height_ = 0U;
+    std::uint64_t history_base_height_ = 0U;
+    Hash256 history_base_block_{};
+    Hash256 history_base_root_{};
+    std::uint64_t undo_retention_limit_ =
+        std::numeric_limits<std::uint64_t>::max();
 
     static void erase_prefix(std::set<Hash256>& values,
                              const std::vector<Hash256>& inserted,
@@ -175,11 +192,26 @@ class ShieldedState {
         for (std::size_t i = 0; i < count; ++i) values.erase(inserted[i]);
     }
 
+    void enforce_undo_retention() {
+        if (undo_retention_limit_ >= history_.size()) return;
+        const auto remove = history_.size() -
+            static_cast<std::size_t>(undo_retention_limit_);
+        const auto& boundary = history_[remove - 1U];
+        history_base_height_ += static_cast<std::uint64_t>(remove);
+        history_base_block_ = boundary.block_id;
+        history_base_root_ = boundary.resulting_root;
+        history_.erase(history_.begin(),
+                       history_.begin() + static_cast<std::ptrdiff_t>(remove));
+    }
+
 public:
     ShieldedState(Hash256 genesis_block, Hash256 initial_root)
         : genesis_block_(genesis_block), genesis_root_(initial_root),
           tip_block_(genesis_block),
           current_root_(initial_root) {
+        history_base_block_ = genesis_block;
+        history_base_root_ = initial_root;
+        ordered_roots_.push_back(initial_root);
         active_roots_.emplace(initial_root, 1U);
     }
 
@@ -194,52 +226,111 @@ public:
     bool contains_commitment(const Hash256& commitment) const {
         return commitments_.find(commitment) != commitments_.end();
     }
-    std::size_t height() const { return history_.size(); }
+    std::uint64_t height() const { return height_; }
+    std::uint64_t history_base_height() const { return history_base_height_; }
+    std::uint64_t undo_retention_limit() const {
+        return undo_retention_limit_;
+    }
     std::size_t spent_count() const { return nullifiers_.size(); }
     std::size_t commitment_count() const { return commitments_.size(); }
     const std::vector<ShieldedUndo>& history() const { return history_; }
 
     std::vector<Hash256> ordered_commitments() const {
-        std::vector<Hash256> ordered;
-        ordered.reserve(commitments_.size());
-        for (const auto& undo : history_)
-            ordered.insert(ordered.end(), undo.commitments.begin(),
-                           undo.commitments.end());
-        return ordered;
+        return ordered_commitments_;
     }
 
     ShieldedSnapshot snapshot() const {
         return {genesis_block_, genesis_root_, tip_block_, current_root_,
                 {nullifiers_.begin(), nullifiers_.end()},
-                {commitments_.begin(), commitments_.end()}, history_};
+                {commitments_.begin(), commitments_.end()},
+                ordered_commitments_, ordered_roots_, history_, height_,
+                history_base_height_, history_base_block_, history_base_root_,
+                undo_retention_limit_};
+    }
+
+    bool set_undo_retention_limit(std::uint64_t limit) {
+        if (limit == 0U || limit > undo_retention_limit_) return false;
+        undo_retention_limit_ = limit;
+        enforce_undo_retention();
+        return true;
     }
 
     static std::optional<ShieldedState> restore(
             const ShieldedSnapshot& snapshot) {
         ShieldedState restored(snapshot.genesis_block, snapshot.genesis_root);
-        Hash256 expected_parent = snapshot.genesis_block;
-        Hash256 expected_root = snapshot.genesis_root;
-        std::set<Hash256> expected_nullifiers;
-        std::set<Hash256> expected_commitments;
+        if (snapshot.history_base_height > snapshot.height ||
+            snapshot.height - snapshot.history_base_height !=
+                snapshot.history.size() ||
+            snapshot.undo_retention_limit == 0U ||
+            snapshot.history.size() > snapshot.undo_retention_limit)
+            return std::nullopt;
+        Hash256 expected_parent = snapshot.history_base_block;
+        Hash256 expected_root = snapshot.history_base_root;
+        std::set<Hash256> expected_nullifiers(snapshot.nullifiers.begin(),
+                                              snapshot.nullifiers.end());
+        std::set<Hash256> expected_commitments(snapshot.commitments.begin(),
+                                               snapshot.commitments.end());
+        if (expected_nullifiers.size() != snapshot.nullifiers.size() ||
+            expected_commitments.size() != snapshot.commitments.size() ||
+            snapshot.ordered_commitments.size() != snapshot.commitments.size() ||
+            std::set<Hash256>(snapshot.ordered_commitments.begin(),
+                              snapshot.ordered_commitments.end()) !=
+                expected_commitments ||
+            snapshot.height >= static_cast<std::uint64_t>(
+                                   std::numeric_limits<std::size_t>::max()) ||
+            snapshot.ordered_roots.size() !=
+                static_cast<std::size_t>(snapshot.height) + 1U ||
+            snapshot.ordered_roots.front() != snapshot.genesis_root ||
+            snapshot.ordered_roots.back() != snapshot.current_root ||
+            snapshot.history_base_height >= snapshot.ordered_roots.size() ||
+            snapshot.ordered_roots[
+                static_cast<std::size_t>(snapshot.history_base_height)] !=
+                snapshot.history_base_root ||
+            (snapshot.history_base_height == 0U &&
+             (snapshot.history_base_block != snapshot.genesis_block ||
+              snapshot.history_base_root != snapshot.genesis_root)))
+            return std::nullopt;
+        restored.active_roots_.clear();
+        for (const auto& root : snapshot.ordered_roots)
+            ++restored.active_roots_[root];
+        std::size_t retained_commitment_count = 0U;
+        std::size_t retained_index = 0U;
         for (const auto& undo : snapshot.history) {
             if (undo.parent_block != expected_parent ||
                 undo.previous_root != expected_root ||
                 undo.block_id == snapshot.genesis_block)
                 return std::nullopt;
             for (const auto& nullifier : undo.nullifiers)
-                if (!expected_nullifiers.insert(nullifier).second)
-                    return std::nullopt;
+                if (expected_nullifiers.find(nullifier) ==
+                    expected_nullifiers.end()) return std::nullopt;
             for (const auto& commitment : undo.commitments)
-                if (!expected_commitments.insert(commitment).second)
-                    return std::nullopt;
-            ++restored.active_roots_[undo.resulting_root];
+                if (expected_commitments.find(commitment) ==
+                    expected_commitments.end()) return std::nullopt;
+            if (retained_commitment_count >
+                std::numeric_limits<std::size_t>::max() -
+                    undo.commitments.size()) return std::nullopt;
+            retained_commitment_count += undo.commitments.size();
+            const auto root_index = static_cast<std::size_t>(
+                snapshot.history_base_height) + retained_index + 1U;
+            if (root_index >= snapshot.ordered_roots.size() ||
+                snapshot.ordered_roots[root_index] != undo.resulting_root)
+                return std::nullopt;
+            ++retained_index;
             expected_parent = undo.block_id;
             expected_root = undo.resulting_root;
         }
+        if (retained_commitment_count > snapshot.ordered_commitments.size())
+            return std::nullopt;
+        const auto suffix = snapshot.ordered_commitments.end() -
+            static_cast<std::ptrdiff_t>(retained_commitment_count);
+        auto expected_commitment = suffix;
+        for (const auto& undo : snapshot.history)
+            for (const auto& commitment : undo.commitments)
+                if (expected_commitment == snapshot.ordered_commitments.end() ||
+                    *expected_commitment++ != commitment)
+                    return std::nullopt;
         if (snapshot.tip_block != expected_parent ||
             snapshot.current_root != expected_root ||
-            snapshot.nullifiers.size() != expected_nullifiers.size() ||
-            snapshot.commitments.size() != expected_commitments.size() ||
             !std::equal(snapshot.nullifiers.begin(), snapshot.nullifiers.end(),
                         expected_nullifiers.begin()) ||
             !std::equal(snapshot.commitments.begin(), snapshot.commitments.end(),
@@ -249,7 +340,14 @@ public:
         restored.current_root_ = snapshot.current_root;
         restored.nullifiers_ = std::move(expected_nullifiers);
         restored.commitments_ = std::move(expected_commitments);
+        restored.ordered_commitments_ = snapshot.ordered_commitments;
+        restored.ordered_roots_ = snapshot.ordered_roots;
         restored.history_ = snapshot.history;
+        restored.height_ = snapshot.height;
+        restored.history_base_height_ = snapshot.history_base_height;
+        restored.history_base_block_ = snapshot.history_base_block;
+        restored.history_base_root_ = snapshot.history_base_root;
+        restored.undo_retention_limit_ = snapshot.undo_retention_limit;
         return restored;
     }
 
@@ -272,6 +370,9 @@ public:
         ShieldedUndo undo{block_id, tip_block_, current_root_, resulting_root,
                           prepared.nullifiers_, prepared.commitments_};
         history_.reserve(history_.size() + 1U);
+        ordered_commitments_.reserve(ordered_commitments_.size() +
+                                     prepared.commitments_.size());
+        ordered_roots_.reserve(ordered_roots_.size() + 1U);
         std::size_t inserted_nullifiers = 0U;
         std::size_t inserted_commitments = 0U;
         bool root_incremented = false;
@@ -296,6 +397,10 @@ public:
             ++active_roots_[resulting_root];
             root_incremented = true;
             history_.push_back(std::move(undo));
+            ordered_commitments_.insert(ordered_commitments_.end(),
+                                        prepared.commitments_.begin(),
+                                        prepared.commitments_.end());
+            ordered_roots_.push_back(resulting_root);
         } catch (...) {
             if (root_incremented) {
                 const auto root = active_roots_.find(resulting_root);
@@ -308,23 +413,39 @@ public:
         }
         tip_block_ = block_id;
         current_root_ = resulting_root;
+        ++height_;
+        enforce_undo_retention();
         return PrivateAdmissionError::none;
     }
 
     PrivateAdmissionError disconnect(const Hash256& block_id) {
-        if (history_.empty()) return PrivateAdmissionError::disconnect_past_genesis;
+        if (history_.empty())
+            return height_ == 0U
+                ? PrivateAdmissionError::disconnect_past_genesis
+                : PrivateAdmissionError::disconnect_past_retained_history;
         const auto& undo = history_.back();
         if (undo.block_id != block_id)
+            return PrivateAdmissionError::disconnect_order_mismatch;
+        if (undo.commitments.size() > ordered_commitments_.size() ||
+            !std::equal(undo.commitments.rbegin(), undo.commitments.rend(),
+                        ordered_commitments_.rbegin()))
+            return PrivateAdmissionError::disconnect_order_mismatch;
+        if (ordered_roots_.empty() ||
+            ordered_roots_.back() != undo.resulting_root)
             return PrivateAdmissionError::disconnect_order_mismatch;
         for (const auto& nullifier : undo.nullifiers) nullifiers_.erase(nullifier);
         for (const auto& commitment : undo.commitments)
             commitments_.erase(commitment);
+        ordered_commitments_.resize(ordered_commitments_.size() -
+                                    undo.commitments.size());
+        ordered_roots_.pop_back();
         const auto root = active_roots_.find(undo.resulting_root);
         if (root != active_roots_.end() && --root->second == 0U)
             active_roots_.erase(root);
         tip_block_ = undo.parent_block;
         current_root_ = undo.previous_root;
         history_.pop_back();
+        --height_;
         return PrivateAdmissionError::none;
     }
 };
