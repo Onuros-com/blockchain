@@ -96,6 +96,9 @@ bounded burst allowance. A miner cannot repeatedly use the absolute decoder
 ceiling. Any consensus activation parameter is documented and reviewed before
 it is enabled.
 
+The disabled rolling-budget model and its activation blocker are documented in
+[Stage 7 block-production budget](stage-7-block-production-policy.md).
+
 Exit evidence:
 
 - maximum annual archival growth at the sustained budget;
