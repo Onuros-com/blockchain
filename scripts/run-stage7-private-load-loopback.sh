@@ -28,8 +28,17 @@ mkdir -p "$output"
 
 bash "$repo_dir/scripts/generate-stage7-tls-material.sh" \
   "$work/tls" load-relay load-client >/dev/null
-"$generator" --generate-corpus "$work/corpus.onc" 4 2 \
+"$generator" --generate-corpus-shards "$work/corpus.onc" 4 2 0 1 \
   >"$output/generator.log" 2>&1
+"$generator" --generate-corpus-shards "$work/corpus.onc" 4 2 0 1 \
+  >>"$output/generator.log" 2>&1
+grep -q '^corpus_shard=REUSED shard=0 ' "$output/generator.log"
+"$generator" --generate-corpus-shards "$work/corpus.onc" 4 2 1 2 \
+  >>"$output/generator.log" 2>&1
+"$generator" --merge-corpus-shards "$work/corpus.onc" 4 2 \
+  >>"$output/generator.log" 2>&1
+grep -q '^orchard_corpus=PASS transactions=4 shards=2 unique=4 ' \
+  "$output/generator.log"
 
 wait_for_log() {
   local pattern="$1" log="$2" pid="$3"
