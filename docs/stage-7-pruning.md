@@ -67,10 +67,26 @@ revalidated locally and must be obtained from an archive node when requested.
 Node-level pruning activation remains blocked until the next checkpoints
 provide:
 
-1. shielded undo retention covering the same reorganization window;
+1. ~~shielded undo retention covering the same reorganization window;~~
 2. a network archive-body retrieval path for `archive_required` results;
 3. archive/pruned convergence and permitted-reorganization tests;
 4. retained-disk measurements on a representative chain.
 
 If any checkpoint validation fails, the node opens without pruning authority
 and must not remove historical data.
+
+## Bounded shielded undo history
+
+The version-2 shielded-state store separates permanent consensus state from
+reorganization-only state. The complete nullifier set, ordered commitment
+frontier and active-root history remain durable, while undo records are limited
+to a nonzero configured window. Older valid anchors therefore remain available
+to transaction validation. The store records the active height and the
+block/root boundary below
+the retained window, validates that every retained undo record forms the exact
+active-chain suffix, and refuses a disconnect below that boundary.
+
+Reducing the window is an atomic checksummed replacement. Increasing it is
+rejected because discarded undo data cannot be reconstructed from the pruned
+state. Restart preserves the limit and boundary, and every subsequent connect
+enforces the limit before persistence.
