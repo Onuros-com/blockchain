@@ -74,7 +74,8 @@ an authenticated checkpoint or proof chain defined by the protocol.
 
 The deterministic manifest and validate-before-replace import path are
 specified in [Stage 7 authenticated shielded-state snapshots](stage-7-authenticated-snapshots.md).
-Signer selection and activation remain outside this checkpoint.
+The Ed25519 signer thresholds and custody gates are specified in
+[Stage 7 snapshot trust policy](stage-7-snapshot-trust-policy.md).
 
 Exit evidence:
 
