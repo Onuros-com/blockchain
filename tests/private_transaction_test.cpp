@@ -132,6 +132,66 @@ int main() {
     check(hash_hex(transaction_id(transaction)) ==
           "24ae52efbcccf272a67253ca8e9a0ce9c5d4651b3242b0d0d05567eb3d628a51");
 
+    const auto effect_digest = private_effect_digest(original);
+    const auto authorization_commitment =
+        private_authorizing_data_commitment(original);
+    const auto pair_commitment =
+        private_effect_authorization_commitment(original);
+    check(effect_digest != authorization_commitment);
+    check(pair_commitment != effect_digest);
+    check(pair_commitment != authorization_commitment);
+
+    PrivateTransactionBundle zero_vector;
+    zero_vector.actions.resize(2U);
+    zero_vector.proof.resize(orchard_proof_base_size +
+                             2U * orchard_proof_per_action_size);
+    check(hash_hex(private_effect_digest(zero_vector)) ==
+          "8b861b1b122fcd6635a466b01667bc1b2aed9a622ebed9c0b0d69a95f834fac0");
+    check(hash_hex(private_authorizing_data_commitment(zero_vector)) ==
+          "af40a39be5efe2f07e7fe1e31e847f33499556ad6b034d30c2167bbc7cc5d7b0");
+    check(hash_hex(private_effect_authorization_commitment(zero_vector)) ==
+          "9dc97c591fab5838a491c5ad19177218c046a29f2d4c3b9a409d5d46f47beb70");
+    throws_invalid_argument([&original] {
+        private_effect_digest(original,
+                              private_commitment_scheme_version + 1U);
+    });
+
+    auto changed_effect = original;
+    ++changed_effect.fee;
+    check(private_effect_digest(changed_effect) != effect_digest);
+    check(private_authorizing_data_commitment(changed_effect) !=
+          authorization_commitment);
+    changed_effect = original;
+    changed_effect.actions[0].encrypted_note[0] ^= 1U;
+    check(private_effect_digest(changed_effect) != effect_digest);
+    changed_effect = original;
+    changed_effect.actions[1].outgoing_ciphertext.back() ^= 1U;
+    check(private_effect_digest(changed_effect) != effect_digest);
+    changed_effect = original;
+    changed_effect.actions[0].nullifier[0] ^= 1U;
+    check(private_effect_digest(changed_effect) != effect_digest);
+
+    auto changed_authorization = original;
+    changed_authorization.anchor[0] ^= 1U;
+    check(private_effect_digest(changed_authorization) == effect_digest);
+    check(private_authorizing_data_commitment(changed_authorization) !=
+          authorization_commitment);
+    changed_authorization = original;
+    changed_authorization.proof[0] ^= 1U;
+    check(private_effect_digest(changed_authorization) == effect_digest);
+    check(private_authorizing_data_commitment(changed_authorization) !=
+          authorization_commitment);
+    changed_authorization = original;
+    changed_authorization.actions[0].spend_authorization[0] ^= 1U;
+    check(private_effect_digest(changed_authorization) == effect_digest);
+    check(private_authorizing_data_commitment(changed_authorization) !=
+          authorization_commitment);
+    changed_authorization = original;
+    changed_authorization.binding_signature[0] ^= 1U;
+    check(private_effect_digest(changed_authorization) == effect_digest);
+    check(private_authorizing_data_commitment(changed_authorization) !=
+          authorization_commitment);
+
     auto one_action = original;
     one_action.actions.resize(1U);
     one_action.proof.resize(orchard_proof_base_size +
