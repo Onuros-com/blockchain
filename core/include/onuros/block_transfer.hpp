@@ -1,5 +1,6 @@
 #pragma once
 
+#include "onuros/block_store.hpp"
 #include "onuros/compact_block_relay.hpp"
 
 #include <cstddef>
@@ -283,6 +284,222 @@ public:
 
     const std::map<std::uint32_t, TransactionEnvelope>& transactions() const {
         return transactions_;
+    }
+};
+
+struct ArchiveBlockRequest {
+    Hash256 block_identifier{};
+};
+
+inline std::vector<std::uint8_t> encode_archive_block_request(
+        const ArchiveBlockRequest& request) {
+    return {request.block_identifier.begin(), request.block_identifier.end()};
+}
+
+inline std::optional<ArchiveBlockRequest> decode_archive_block_request(
+        const std::vector<std::uint8_t>& input) {
+    if (input.size() != Hash256{}.size()) return std::nullopt;
+    ArchiveBlockRequest request;
+    std::copy(input.begin(), input.end(), request.block_identifier.begin());
+    return request;
+}
+
+struct ArchiveBlockChunk {
+    Hash256 block_identifier{};
+    std::uint32_t sequence = 0U;
+    std::uint32_t total_chunks = 0U;
+    std::uint32_t total_block_bytes = 0U;
+    std::vector<std::uint8_t> bytes;
+};
+
+inline constexpr std::size_t archive_block_chunk_prefix_size = 48U;
+
+inline std::vector<std::uint8_t> encode_archive_block_chunk(
+        const ArchiveBlockChunk& chunk) {
+    if (chunk.bytes.empty() ||
+        chunk.bytes.size() > std::numeric_limits<std::uint32_t>::max())
+        throw std::length_error("invalid archive block chunk size");
+    std::vector<std::uint8_t> output;
+    output.reserve(archive_block_chunk_prefix_size + chunk.bytes.size());
+    detail::append_hash(output, chunk.block_identifier);
+    detail::append_little_endian(output, chunk.sequence);
+    detail::append_little_endian(output, chunk.total_chunks);
+    detail::append_little_endian(output, chunk.total_block_bytes);
+    detail::append_little_endian(
+        output, static_cast<std::uint32_t>(chunk.bytes.size()));
+    output.insert(output.end(), chunk.bytes.begin(), chunk.bytes.end());
+    return output;
+}
+
+struct ArchiveBlockLimits {
+    std::size_t maximum_chunk_bytes = 256U * 1024U;
+    std::uint32_t maximum_total_chunks = 4096U;
+    std::uint32_t maximum_block_bytes =
+        static_cast<std::uint32_t>(max_serialized_block_bytes);
+};
+
+inline std::optional<ArchiveBlockChunk> decode_archive_block_chunk(
+        const std::vector<std::uint8_t>& input,
+        const ArchiveBlockLimits& limits) {
+    if (input.size() <= archive_block_chunk_prefix_size ||
+        input.size() > limits.maximum_chunk_bytes)
+        return std::nullopt;
+    detail::ByteReader reader(input);
+    ArchiveBlockChunk chunk;
+    std::uint32_t chunk_size = 0U;
+    if (!reader.read_hash(chunk.block_identifier) ||
+        !reader.read_little_endian(chunk.sequence) ||
+        !reader.read_little_endian(chunk.total_chunks) ||
+        !reader.read_little_endian(chunk.total_block_bytes) ||
+        !reader.read_little_endian(chunk_size) ||
+        chunk.total_chunks == 0U || chunk.sequence >= chunk.total_chunks ||
+        chunk.total_chunks > limits.maximum_total_chunks ||
+        chunk.total_block_bytes == 0U ||
+        chunk.total_block_bytes > limits.maximum_block_bytes ||
+        chunk_size == 0U || chunk_size > chunk.total_block_bytes ||
+        reader.remaining() != chunk_size ||
+        !reader.read_bytes(chunk_size, chunk.bytes) || !reader.exhausted())
+        return std::nullopt;
+    return chunk;
+}
+
+inline std::optional<std::vector<ArchiveBlockChunk>>
+make_archive_block_chunks(const Block& block, std::size_t maximum_chunk_bytes) {
+    if (maximum_chunk_bytes <= archive_block_chunk_prefix_size)
+        return std::nullopt;
+    const auto encoded = encode_block(block);
+    if (encoded.empty() || encoded.size() > max_serialized_block_bytes ||
+        encoded.size() > std::numeric_limits<std::uint32_t>::max())
+        return std::nullopt;
+    const auto payload_limit = maximum_chunk_bytes -
+                               archive_block_chunk_prefix_size;
+    const auto chunk_count = encoded.size() / payload_limit +
+        (encoded.size() % payload_limit == 0U ? 0U : 1U);
+    if (chunk_count == 0U ||
+        chunk_count > std::numeric_limits<std::uint32_t>::max())
+        return std::nullopt;
+    std::vector<ArchiveBlockChunk> chunks;
+    chunks.reserve(chunk_count);
+    const auto identifier = block_id(block.header);
+    for (std::size_t offset = 0U, sequence = 0U; offset < encoded.size();
+         ++sequence) {
+        const auto size = std::min(payload_limit, encoded.size() - offset);
+        ArchiveBlockChunk chunk;
+        chunk.block_identifier = identifier;
+        chunk.sequence = static_cast<std::uint32_t>(sequence);
+        chunk.total_chunks = static_cast<std::uint32_t>(chunk_count);
+        chunk.total_block_bytes = static_cast<std::uint32_t>(encoded.size());
+        chunk.bytes.assign(
+            encoded.begin() + static_cast<std::ptrdiff_t>(offset),
+            encoded.begin() + static_cast<std::ptrdiff_t>(offset + size));
+        chunks.push_back(std::move(chunk));
+        offset += size;
+    }
+    return chunks;
+}
+
+enum class ArchiveBlockServeError {
+    none,
+    unknown_block,
+    body_unavailable,
+    chunk_limit
+};
+
+struct ArchiveBlockServeResult {
+    ArchiveBlockServeError error = ArchiveBlockServeError::none;
+    std::vector<ArchiveBlockChunk> chunks;
+
+    bool available() const noexcept {
+        return error == ArchiveBlockServeError::none && !chunks.empty();
+    }
+};
+
+inline ArchiveBlockServeResult serve_archive_block(
+        const PersistentBlockStore& store, const ArchiveBlockRequest& request,
+        std::size_t maximum_chunk_bytes) {
+    const auto availability = store.body_availability(request.block_identifier);
+    if (availability == BlockBodyAvailability::unknown)
+        return {ArchiveBlockServeError::unknown_block, {}};
+    if (availability != BlockBodyAvailability::retained)
+        return {ArchiveBlockServeError::body_unavailable, {}};
+    const auto* stored = store.find(request.block_identifier);
+    if (stored == nullptr || !stored->body_retained)
+        return {ArchiveBlockServeError::body_unavailable, {}};
+    const auto chunks = make_archive_block_chunks(
+        stored->block, maximum_chunk_bytes);
+    if (!chunks) return {ArchiveBlockServeError::chunk_limit, {}};
+    return {ArchiveBlockServeError::none, *chunks};
+}
+
+enum class ArchiveBlockAssemblyError {
+    none,
+    wrong_block,
+    inconsistent_manifest,
+    out_of_order,
+    byte_limit,
+    invalid_block
+};
+
+struct ArchiveBlockAssemblyResult {
+    ArchiveBlockAssemblyError error = ArchiveBlockAssemblyError::none;
+    std::optional<Block> block;
+};
+
+class ArchiveBlockAssembler {
+    BlockHeader expected_header_;
+    DecodeLimits decode_limits_;
+    ArchiveBlockLimits limits_;
+    std::uint32_t expected_chunks_ = 0U;
+    std::uint32_t expected_bytes_ = 0U;
+    std::uint32_t next_sequence_ = 0U;
+    std::vector<std::uint8_t> encoded_;
+
+public:
+    ArchiveBlockAssembler(BlockHeader expected_header,
+                          DecodeLimits decode_limits,
+                          ArchiveBlockLimits limits)
+        : expected_header_(std::move(expected_header)),
+          decode_limits_(decode_limits), limits_(limits) {}
+
+    ArchiveBlockAssemblyResult add(const ArchiveBlockChunk& chunk) {
+        if (chunk.block_identifier != block_id(expected_header_))
+            return {ArchiveBlockAssemblyError::wrong_block, std::nullopt};
+        if (chunk.bytes.empty() ||
+            chunk.bytes.size() > limits_.maximum_chunk_bytes -
+                                     std::min(limits_.maximum_chunk_bytes,
+                                              archive_block_chunk_prefix_size))
+            return {ArchiveBlockAssemblyError::byte_limit, std::nullopt};
+        if (expected_chunks_ == 0U) {
+            if (chunk.total_chunks == 0U ||
+                chunk.total_chunks > limits_.maximum_total_chunks ||
+                chunk.total_block_bytes == 0U ||
+                chunk.total_block_bytes > limits_.maximum_block_bytes)
+                return {ArchiveBlockAssemblyError::byte_limit, std::nullopt};
+            expected_chunks_ = chunk.total_chunks;
+            expected_bytes_ = chunk.total_block_bytes;
+            encoded_.reserve(expected_bytes_);
+        } else if (chunk.total_chunks != expected_chunks_ ||
+                   chunk.total_block_bytes != expected_bytes_)
+            return {ArchiveBlockAssemblyError::inconsistent_manifest,
+                    std::nullopt};
+        if (chunk.sequence != next_sequence_ ||
+            next_sequence_ >= expected_chunks_)
+            return {ArchiveBlockAssemblyError::out_of_order, std::nullopt};
+        if (encoded_.size() > expected_bytes_ ||
+            chunk.bytes.size() > expected_bytes_ - encoded_.size())
+            return {ArchiveBlockAssemblyError::byte_limit, std::nullopt};
+        encoded_.insert(encoded_.end(), chunk.bytes.begin(), chunk.bytes.end());
+        ++next_sequence_;
+        if (next_sequence_ != expected_chunks_)
+            return {ArchiveBlockAssemblyError::none, std::nullopt};
+        if (encoded_.size() != expected_bytes_)
+            return {ArchiveBlockAssemblyError::inconsistent_manifest,
+                    std::nullopt};
+        auto block = decode_block(encoded_, decode_limits_);
+        if (!block || !(block->header == expected_header_) ||
+            !has_valid_transaction_root(*block))
+            return {ArchiveBlockAssemblyError::invalid_block, std::nullopt};
+        return {ArchiveBlockAssemblyError::none, std::move(block)};
     }
 };
 

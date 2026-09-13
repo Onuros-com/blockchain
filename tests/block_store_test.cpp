@@ -121,6 +121,26 @@ int main() {
               pruned_restart.index().active_tip()->id ==
                   block_id(stronger.header),
               "header-only history and active chain recover after restart");
+        auto altered_main = main;
+        altered_main.transactions.front().body.back() ^= 1U;
+        check(pruned_restart.restore_body(altered_main) ==
+                  BlockStoreError::invalid_block_encoding &&
+              pruned_restart.body_availability(block_id(main.header)) ==
+                  BlockBodyAvailability::archive_required,
+              "archive body must match committed transaction root");
+        check(pruned_restart.restore_body(main) == BlockStoreError::none &&
+              pruned_restart.body_availability(block_id(main.header)) ==
+                  BlockBodyAvailability::retained &&
+              pruned_restart.body_availability(fork_id) ==
+                  BlockBodyAvailability::archive_required,
+              "validated archive body is atomically restored");
+        PersistentBlockStore restored_restart(limits, 1U << 20U);
+        check(restored_restart.open(path) == BlockStoreError::none &&
+              restored_restart.body_availability(block_id(main.header)) ==
+                  BlockBodyAvailability::retained &&
+              encode_block(restored_restart.find(block_id(main.header))->block) ==
+                  encode_block(main),
+              "restored archive body survives restart exactly");
         const auto next = make_block(
             3U, block_id(stronger.header), 281U, 5U);
         check(pruned_restart.append(next, block_work(next)) ==

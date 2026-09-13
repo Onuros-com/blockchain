@@ -30,6 +30,8 @@ enum class P2pMessageType : std::uint16_t {
     get_block_transactions = 21U,
     block_transactions = 22U,
     block_inventory = 23U,
+    get_archive_block = 24U,
+    archive_block = 25U,
     get_headers = 30U,
     headers = 31U,
     mining_job = 40U,
@@ -51,6 +53,8 @@ inline bool known_message_type(std::uint16_t value) noexcept {
         case P2pMessageType::get_block_transactions:
         case P2pMessageType::block_transactions:
         case P2pMessageType::block_inventory:
+        case P2pMessageType::get_archive_block:
+        case P2pMessageType::archive_block:
         case P2pMessageType::get_headers:
         case P2pMessageType::headers:
         case P2pMessageType::mining_job:
@@ -153,6 +157,7 @@ inline constexpr std::uint64_t p2p_service_full_node = 1ULL << 0U;
 inline constexpr std::uint64_t p2p_service_compact_relay = 1ULL << 1U;
 inline constexpr std::uint64_t p2p_service_pruned_node = 1ULL << 2U;
 inline constexpr std::uint64_t p2p_service_authenticated_transport = 1ULL << 3U;
+inline constexpr std::uint64_t p2p_service_archive_node = 1ULL << 4U;
 
 struct HelloMessage {
     Hash256 chain_id{};
