@@ -1,8 +1,8 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror
-TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test stage7_node_admission_test stage7_transaction_frame_test stage7_orchard_network_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test private_node_commit_test
+TESTS = economics_test block_format_test compact_block_relay_test p2p_protocol_test p2p_transport_test peer_manager_test peer_store_test peer_event_loop_test block_transfer_test stage7_relay_test stage7_node_admission_test stage7_transaction_frame_test stage7_orchard_network_test header_sync_test download_coordinator_test mini_node_history_test block_validation_test chain_index_test difficulty_test block_store_test active_chain_test local_node_test private_admission_test private_transaction_test private_transaction_size_test private_fuzz_test orchard_ffi_backend_test persistent_shielded_state_test private_reward_test private_mempool_test private_block_test private_node_commit_test
 
-.PHONY: all node network-node private-relay-node tls-probe mining-endpoint benchmark bandwidth-benchmark tls-test test kawpow-test mining-endpoint-test sanitize clean
+.PHONY: all node network-node private-relay-node tls-probe mining-endpoint benchmark size-report bandwidth-benchmark tls-test test kawpow-test mining-endpoint-test sanitize clean
 
 all: node
 
@@ -17,6 +17,9 @@ tls-probe: build/onuros-stage7-tls-probe
 mining-endpoint: build/onuros-mining-endpoint
 
 benchmark: build/onuros-private-tps-benchmark
+
+size-report: build/onuros-private-size-report
+	./build/onuros-private-size-report
 
 bandwidth-benchmark: build/onuros-stage7-bandwidth-benchmark
 
@@ -67,6 +70,10 @@ build/onuros-private-tps-benchmark: apps/private_tps_benchmark.cpp
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
 
+build/onuros-private-size-report: apps/private_size_report.cpp
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
+
 build/onuros-stage7-bandwidth-benchmark: apps/stage7_bandwidth_benchmark.cpp
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -Icore/include $< -o $@
@@ -113,7 +120,7 @@ sanitize:
 	done
 
 clean:
-	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-stage7-private-relay-node build/onuros-stage7-tls-probe build/onuros-mining-endpoint build/onuros-private-tps-benchmark build/onuros-stage7-bandwidth-benchmark
+	$(RM) $(addprefix build/,$(TESTS)) build/onuros-local-node build/onuros-stage7-network-node build/onuros-stage7-private-relay-node build/onuros-stage7-tls-probe build/onuros-mining-endpoint build/onuros-private-tps-benchmark build/onuros-private-size-report build/onuros-stage7-bandwidth-benchmark
 	$(RM) -r build/kawpow-objects
 	$(RM) -r build/mining-endpoint-objects
 	$(RM) -r build/mining-endpoint-app-objects

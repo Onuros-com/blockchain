@@ -26,6 +26,41 @@ Exit evidence:
 - rejection of ambiguous, non-canonical and truncated encodings;
 - a measured before/after size result.
 
+Initial deterministic accounting establishes the ONP2 baseline:
+
+| Component | One action | Two actions |
+| --- | ---: | ---: |
+| Outer transaction framing | 8 B | 8 B |
+| Bundle prefix | 65 B | 65 B |
+| Action effects | 160 B | 320 B |
+| Ciphertexts | 660 B | 1,320 B |
+| Action signatures | 64 B | 128 B |
+| Proof length and proof | 4,996 B | 7,268 B |
+| Binding signature | 64 B | 64 B |
+| **Canonical transaction** | **6,017 B** | **9,173 B** |
+
+At 100 TPS and a 60-second interval, 6,000 current two-action
+transactions serialize to 55,038,164 bytes (52.49 MiB), including the block
+prefix. A 4 MiB production target therefore permits at most 699 gross bytes
+per transaction and requires at least a 92.38% reduction from the current
+two-action encoding. Run `make size-report` to reproduce these values.
+
+### 4 MiB feasibility gate
+
+`ROADMAP BLOCKER`: proof aggregation alone cannot reach 4 MiB at 100 ordinary
+two-action private transactions per second. After hypothetically removing all
+per-transaction proof and signature bytes, the existing effect fields and
+ciphertexts still consume 1,713 bytes per transaction, or 10,278,164 bytes
+(9.80 MiB) per 60-second block. This lower bound is an accounting result, not a
+valid unsigned encoding.
+
+Reaching 4 MiB therefore requires a separately reviewed privacy-format change,
+such as safe ciphertext/field amortization or a different transaction/action
+model, in addition to proof aggregation. The 16 MiB decoder ceiling remains in
+force. No 4 MiB consensus activation may be proposed until the replacement
+format has cryptographic review, attack tests, canonical vectors and measured
+proof generation below the Stage 7 latency gate.
+
 ### 2. Compact batching and parallel verification
 
 Keep individual consensus verification while reducing transport and scheduling
@@ -108,4 +143,3 @@ tests. Any proposal that changes authorization semantics, proof validity,
 history requirements or consensus activation is marked `ROADMAP BLOCKER` and
 pauses for explicit agreement. Routine implementation inside an agreed item
 does not renumber or replace an original roadmap stage.
-
