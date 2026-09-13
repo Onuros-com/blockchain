@@ -16,7 +16,14 @@ admitted_unique=66000
 relayed_unique=66000
 duplicate_transactions=0
 invalid_transactions=0
-queue_high_watermark=0
+queue_high_watermark=32
+queue_limit=32
+verification_batches=2750
+verification_tasks=66000
+verification_workers=8
+verification_pool_starts=1
+verification_seconds=550.000000
+admitted_tps=110.000000
 divergent_transactions=0
 limits_exceeded=0
 verification_backend=orchard-ffi
@@ -28,6 +35,34 @@ EOF
 done
 bash "$validator" relay "$work/a.relay" "$work/b.relay" "$work/c.relay" |
   grep -q '^stage7_unique_relay_gate=PASS '
+
+sed -i 's/^queue_high_watermark=32$/queue_high_watermark=0/' "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted an uninstrumented queue" >&2
+  exit 1
+fi
+sed -i 's/^queue_high_watermark=0$/queue_high_watermark=32/' "$work/c.relay"
+
+sed -i 's/^verification_pool_starts=1$/verification_pool_starts=2/' \
+  "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted restarted verification workers" >&2
+  exit 1
+fi
+sed -i 's/^verification_pool_starts=2$/verification_pool_starts=1/' \
+  "$work/c.relay"
+
+sed -i 's/^admitted_tps=110.000000$/admitted_tps=109.000000/' \
+  "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted inconsistent reported throughput" >&2
+  exit 1
+fi
+sed -i 's/^admitted_tps=109.000000$/admitted_tps=110.000000/' \
+  "$work/c.relay"
 
 sed -i 's/^role=observer$/role=relay/' "$work/c.relay"
 if bash "$validator" relay "$work/a.relay" "$work/b.relay" \

@@ -109,9 +109,12 @@ Observer:
 
 The origin paces 66,000 transactions at 110/s. Relay and observer processing
 overlap through the streaming connection. Each node verifies every proof in
-parallel, then applies nullifier, commitment, capacity and relay-pool checks in
-canonical order. TCP backpressure slows the origin if any downstream node
-falls behind; the final measured rate therefore remains end-to-end.
+parallel on a bounded persistent worker pool, then applies nullifier,
+commitment, capacity and relay-pool checks in canonical order. TCP
+backpressure slows the origin if any downstream node falls behind; the final
+measured rate therefore remains end-to-end. The node manifest records the
+worker count, pool-start count, verification time, batch count and real queue
+high-watermark used for the run.
 
 ## Capture and validation
 

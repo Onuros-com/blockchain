@@ -323,6 +323,12 @@ struct RunStats {
     std::uint64_t duplicates = 0U;
     std::uint64_t invalid = 0U;
     std::uint64_t queue_high_watermark = 0U;
+    std::uint64_t queue_limit = 0U;
+    std::uint64_t verification_batches = 0U;
+    std::uint64_t verification_tasks = 0U;
+    std::uint64_t verification_workers = 0U;
+    std::uint64_t verification_pool_starts = 0U;
+    double verification_seconds = 0.0;
     std::uint64_t divergent = 0U;
     Hash256 id_set{};
     Hash256 first{};
@@ -342,6 +348,19 @@ void write_manifest(const std::filesystem::path& path, const RunStats& stats) {
            << "duplicate_transactions=" << stats.duplicates << '\n'
            << "invalid_transactions=" << stats.invalid << '\n'
            << "queue_high_watermark=" << stats.queue_high_watermark << '\n'
+           << "queue_limit=" << stats.queue_limit << '\n'
+           << "verification_batches=" << stats.verification_batches << '\n'
+           << "verification_tasks=" << stats.verification_tasks << '\n'
+           << "verification_workers=" << stats.verification_workers << '\n'
+           << "verification_pool_starts="
+           << stats.verification_pool_starts << '\n'
+           << "verification_seconds=" << stats.verification_seconds << '\n'
+           << "admitted_tps="
+           << (stats.duration_seconds == 0.0
+                   ? 0.0
+                   : static_cast<double>(stats.admitted) /
+                         stats.duration_seconds)
+           << '\n'
            << "divergent_transactions=" << stats.divergent << '\n'
            << "limits_exceeded=0\n"
            << "verification_backend=orchard-ffi\n"
@@ -456,6 +475,17 @@ RunStats complete_stats(const std::string& role, Clock::time_point started,
     stats.relayed = admission.relay_pool().size();
     stats.duplicates = 0U;
     stats.invalid = admission.metrics().transactions_mempool_rejected;
+    stats.queue_high_watermark =
+        admission.metrics().verification_queue_high_watermark;
+    stats.queue_limit = admission.metrics().verification_queue_limit;
+    stats.verification_batches = admission.metrics().verification_batches;
+    stats.verification_tasks = admission.metrics().verification_tasks;
+    stats.verification_workers = admission.metrics().verification_workers;
+    stats.verification_pool_starts =
+        admission.metrics().verification_pool_starts;
+    stats.verification_seconds =
+        static_cast<double>(admission.metrics().verification_microseconds) /
+        1'000'000.0;
     stats.divergent = divergent;
     stats.id_set = id_set_hash(identifiers);
     stats.first = identifiers.front();

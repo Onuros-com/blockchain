@@ -33,21 +33,46 @@ case "$mode" in
       duplicates="$(field "$manifest" duplicate_transactions)"
       invalid="$(field "$manifest" invalid_transactions)"
       queue="$(field "$manifest" queue_high_watermark)"
+      queue_limit="$(field "$manifest" queue_limit)"
+      verification_batches="$(field "$manifest" verification_batches)"
+      verification_tasks="$(field "$manifest" verification_tasks)"
+      verification_workers="$(field "$manifest" verification_workers)"
+      verification_pool_starts="$(field "$manifest" verification_pool_starts)"
+      verification_seconds="$(field "$manifest" verification_seconds)"
+      admitted_tps="$(field "$manifest" admitted_tps)"
       divergent="$(field "$manifest" divergent_transactions)"
       overflow="$(field "$manifest" limits_exceeded)"
       backend="$(field "$manifest" verification_backend)"
       exit_status="$(field "$manifest" process_exit_status)"
       payloads="$(field "$manifest" private_payloads_logged)"
       set_hash="$(field "$manifest" id_set_sha256)"
-      awk -v d="$duration" -v s="$submitted" -v a="$admitted" -v r="$relayed" '
+      awk -v d="$duration" -v s="$submitted" -v a="$admitted" \
+          -v r="$relayed" -v q="$queue" -v ql="$queue_limit" \
+          -v vb="$verification_batches" -v vt="$verification_tasks" \
+          -v vw="$verification_workers" -v ps="$verification_pool_starts" \
+          -v vs="$verification_seconds" -v reported="$admitted_tps" '
         BEGIN {
+          measured=a / d;
+          delta=reported - measured;
+          if (delta < 0) delta=-delta;
           exit(d + 0 >= 600 && s + 0 >= a + 0 && a + 0 >= 60000 &&
-               a / d >= 100 && r + 0 == a + 0 ? 0 : 1)
+               measured >= 100 && r + 0 == a + 0 && q + 0 > 0 &&
+               q + 0 <= ql + 0 && ql + 0 > 0 && vb + 0 > 0 &&
+               vt + 0 == a + 0 && vw + 0 > 0 && vw + 0 <= ql + 0 &&
+               ps + 0 == 1 &&
+               vs + 0 > 0 && vs + 0 <= d + 0 && delta < 0.001 ? 0 : 1)
         }
       ' || { echo "relay rate/duration gate failed: $manifest" >&2; exit 1; }
       [[ "$role" =~ ^(origin|relay|observer)$ &&
          "$duplicates" == "0" && "$invalid" == "0" &&
-         "$queue" =~ ^[0-9]+$ && "$divergent" == "0" && "$overflow" == "0" &&
+         "$queue" =~ ^[0-9]+$ && "$queue_limit" =~ ^[0-9]+$ &&
+         "$verification_batches" =~ ^[0-9]+$ &&
+         "$verification_tasks" =~ ^[0-9]+$ &&
+         "$verification_workers" =~ ^[0-9]+$ &&
+         "$verification_pool_starts" =~ ^[0-9]+$ &&
+         "$verification_seconds" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$admitted_tps" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$divergent" == "0" && "$overflow" == "0" &&
          "$backend" == "orchard-ffi" && "$exit_status" == "0" &&
          "$payloads" == "false" && "$set_hash" =~ ^[0-9a-f]{64}$ ]] || {
         echo "relay invariant failed: $manifest" >&2

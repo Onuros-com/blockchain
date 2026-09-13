@@ -4,11 +4,16 @@
 #include "onuros/stage7_relay.hpp"
 
 #include <algorithm>
-#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <condition_variable>
+#include <deque>
+#include <exception>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <thread>
@@ -135,6 +140,13 @@ struct NetworkAdmissionMetrics {
     std::size_t transaction_frames_rejected = 0U;
     std::size_t blocks_accepted = 0U;
     std::size_t blocks_rejected = 0U;
+    std::size_t verification_batches = 0U;
+    std::size_t verification_tasks = 0U;
+    std::size_t verification_workers = 0U;
+    std::size_t verification_pool_starts = 0U;
+    std::size_t verification_queue_limit = 0U;
+    std::size_t verification_queue_high_watermark = 0U;
+    std::uint64_t verification_microseconds = 0U;
 };
 
 // Fail-closed boundary between decoded peer messages and full-node state.
@@ -152,6 +164,123 @@ public:
         std::function<bool(const Block&, std::uint64_t now)>;
 
 private:
+    class VerificationWorkerPool {
+        struct Task {
+            const TransactionEnvelope* transaction = nullptr;
+            VerifiedPrivateEffects* effects = nullptr;
+        };
+
+        const PrivateTransactionVerifier& verifier_;
+        const std::size_t queue_limit_;
+        std::vector<std::thread> threads_;
+        std::deque<Task> queue_;
+        mutable std::mutex mutex_;
+        std::mutex submission_mutex_;
+        std::condition_variable work_available_;
+        std::condition_variable batch_complete_;
+        std::size_t outstanding_ = 0U;
+        std::size_t queue_high_watermark_ = 0U;
+        std::exception_ptr failure_;
+        bool stopping_ = false;
+
+        void stop() noexcept {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                stopping_ = true;
+            }
+            work_available_.notify_all();
+            for (auto& thread : threads_)
+                if (thread.joinable()) thread.join();
+        }
+
+        void work() noexcept {
+            for (;;) {
+                Task task;
+                {
+                    std::unique_lock<std::mutex> lock(mutex_);
+                    work_available_.wait(lock, [this] {
+                        return stopping_ || !queue_.empty();
+                    });
+                    if (stopping_ && queue_.empty()) return;
+                    task = queue_.front();
+                    queue_.pop_front();
+                }
+                try {
+                    *task.effects = verifier_.verify(*task.transaction);
+                } catch (...) {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (!failure_) failure_ = std::current_exception();
+                }
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    --outstanding_;
+                    if (outstanding_ == 0U) batch_complete_.notify_one();
+                }
+            }
+        }
+
+    public:
+        VerificationWorkerPool(const PrivateTransactionVerifier& verifier,
+                               std::size_t workers,
+                               std::size_t queue_limit)
+            : verifier_(verifier), queue_limit_(queue_limit) {
+            if (workers == 0U || queue_limit == 0U)
+                throw std::invalid_argument("invalid verification pool limits");
+            threads_.reserve(workers);
+            try {
+                for (std::size_t worker = 0U; worker < workers; ++worker)
+                    threads_.emplace_back([this] { work(); });
+            } catch (...) {
+                stop();
+                throw;
+            }
+        }
+
+        VerificationWorkerPool(const VerificationWorkerPool&) = delete;
+        VerificationWorkerPool& operator=(const VerificationWorkerPool&) =
+            delete;
+
+        ~VerificationWorkerPool() { stop(); }
+
+        std::vector<VerifiedPrivateEffects> verify(
+                const std::vector<TransactionEnvelope>& transactions) {
+            if (transactions.empty()) return {};
+            if (transactions.size() > queue_limit_)
+                throw std::length_error("verification queue limit exceeded");
+            std::lock_guard<std::mutex> submission(submission_mutex_);
+            std::vector<VerifiedPrivateEffects> effects(transactions.size());
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                failure_ = nullptr;
+                outstanding_ = transactions.size();
+                for (std::size_t index = 0U;
+                     index < transactions.size(); ++index)
+                    queue_.push_back({&transactions[index], &effects[index]});
+                queue_high_watermark_ =
+                    std::max(queue_high_watermark_, queue_.size());
+            }
+            work_available_.notify_all();
+            std::exception_ptr failure;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                batch_complete_.wait(lock, [this] {
+                    return outstanding_ == 0U;
+                });
+                failure = failure_;
+            }
+            if (failure) std::rethrow_exception(failure);
+            return effects;
+        }
+
+        std::size_t workers() const noexcept { return threads_.size(); }
+        std::size_t queue_limit() const noexcept { return queue_limit_; }
+
+        std::size_t queue_high_watermark() const {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return queue_high_watermark_;
+        }
+    };
+
     const ShieldedState& shielded_state_;
     const PrivateTransactionVerifier& verifier_;
     PrivateMempool& mempool_;
@@ -159,6 +288,8 @@ private:
     NetworkTransactionBatchLimits batch_limits_;
     BlockAdmission block_admission_;
     NetworkAdmissionMetrics metrics_{};
+    std::unique_ptr<VerificationWorkerPool> verification_pool_;
+    std::size_t verification_pool_workers_ = 0U;
 
     void rollback(const std::vector<Hash256>& identifiers) {
         for (auto identifier = identifiers.rbegin();
@@ -272,22 +403,29 @@ public:
         NetworkTransactionBatchDecodeResult decoded;
         if (const auto rejected = decode_transaction_frame(frame, decoded))
             return *rejected;
-        const auto workers = std::max<std::size_t>(
-            1U, std::min(requested_workers, decoded.transactions.size()));
-        std::vector<VerifiedPrivateEffects> effects(decoded.transactions.size());
-        std::atomic<std::size_t> next{0U};
-        std::vector<std::thread> threads;
-        threads.reserve(workers);
-        for (std::size_t worker = 0U; worker < workers; ++worker) {
-            threads.emplace_back([&] {
-                for (;;) {
-                    const auto index = next.fetch_add(1U);
-                    if (index >= decoded.transactions.size()) break;
-                    effects[index] = verifier_.verify(decoded.transactions[index]);
-                }
-            });
+        const auto workers = std::max<std::size_t>(1U, std::min(
+            requested_workers,
+            static_cast<std::size_t>(batch_limits_.maximum_transactions)));
+        if (!verification_pool_ || verification_pool_workers_ != workers) {
+            verification_pool_ = std::make_unique<VerificationWorkerPool>(
+                verifier_, workers, batch_limits_.maximum_transactions);
+            verification_pool_workers_ = workers;
+            ++metrics_.verification_pool_starts;
         }
-        for (auto& thread : threads) thread.join();
+        const auto started = std::chrono::steady_clock::now();
+        auto effects = verification_pool_->verify(decoded.transactions);
+        const auto elapsed = std::chrono::duration_cast<
+            std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started);
+        ++metrics_.verification_batches;
+        metrics_.verification_tasks += decoded.transactions.size();
+        metrics_.verification_workers = verification_pool_->workers();
+        metrics_.verification_queue_limit = verification_pool_->queue_limit();
+        metrics_.verification_queue_high_watermark = std::max(
+            metrics_.verification_queue_high_watermark,
+            verification_pool_->queue_high_watermark());
+        metrics_.verification_microseconds +=
+            static_cast<std::uint64_t>(elapsed.count());
         return commit_verified_frame(decoded.transactions, std::move(effects));
     }
 

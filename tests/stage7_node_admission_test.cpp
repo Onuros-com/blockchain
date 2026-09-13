@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <thread>
 
 namespace {
@@ -65,6 +66,22 @@ public:
     std::size_t thread_count() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return threads_.size();
+    }
+};
+
+class ThrowingVerifier final : public PrivateTransactionVerifier {
+    Hash256 anchor_;
+
+public:
+    explicit ThrowingVerifier(Hash256 anchor) : anchor_(anchor) {}
+
+    VerifiedPrivateEffects verify(
+            const TransactionEnvelope& candidate) const override {
+        if (candidate.body[0] == 0U)
+            throw std::runtime_error("injected verifier failure");
+        return {PrivateProofError::none, anchor_,
+                {value(500U + candidate.body[1])},
+                {value(600U + candidate.body[0])}, 1};
     }
 };
 
@@ -160,5 +177,58 @@ int main() {
     check(parallel_mempool.size() == batch.size() &&
           parallel_relay.size() == batch.size());
     check(parallel_verifier.thread_count() > 1U);
+
+    std::vector<TransactionEnvelope> second_batch;
+    for (std::uint8_t selector = 18U; selector < 26U; ++selector)
+        second_batch.push_back(transaction(selector));
+    const P2pFrame second_frame{
+        stage7_protocol_version, P2pMessageType::transactions, 51U,
+        encode_network_transactions(second_batch)};
+    const auto second_result =
+        parallel.admit_frame_parallel(second_frame, 4U);
+    check(second_result.accepted_transactions == second_batch.size());
+    check(parallel_mempool.size() == 16U && parallel_relay.size() == 16U);
+    check(parallel_verifier.thread_count() == 4U);
+    const auto& parallel_metrics = parallel.metrics();
+    check(parallel_metrics.verification_batches == 2U);
+    check(parallel_metrics.verification_tasks == 16U);
+    check(parallel_metrics.verification_workers == 4U);
+    check(parallel_metrics.verification_pool_starts == 1U);
+    check(parallel_metrics.verification_queue_limit == 64U);
+    check(parallel_metrics.verification_queue_high_watermark == 8U);
+    check(parallel_metrics.verification_microseconds > 0U);
+
+    PrivateMempool failure_mempool({8U, 4096U, 8U, 64U, 2U});
+    ValidatedRelayPool failure_relay(8U, 4096U);
+    Stage7NodeAdmission failure(
+        state, verifier, failure_mempool, failure_relay);
+    const std::vector<TransactionEnvelope> failure_batch{
+        transaction(30U), transaction(0U), transaction(31U)};
+    const P2pFrame failure_frame{
+        stage7_protocol_version, P2pMessageType::transactions, 52U,
+        encode_network_transactions(failure_batch)};
+    const auto failure_result =
+        failure.admit_frame_parallel(failure_frame, 1U);
+    check(failure_result.error ==
+          NetworkFrameAdmissionError::transaction_rejected);
+    check(failure_result.failed_index && *failure_result.failed_index == 1U);
+    check(failure_mempool.size() == 0U && failure_relay.size() == 0U);
+    check(failure.metrics().transactions_accepted == 0U);
+    check(failure.metrics().verification_workers == 1U);
+    check(failure.metrics().verification_pool_starts == 1U);
+
+    ThrowingVerifier throwing_verifier(root);
+    PrivateMempool throwing_mempool({8U, 4096U, 8U, 64U, 2U});
+    ValidatedRelayPool throwing_relay(8U, 4096U);
+    Stage7NodeAdmission throwing(
+        state, throwing_verifier, throwing_mempool, throwing_relay);
+    bool exception_propagated = false;
+    try {
+        (void)throwing.admit_frame_parallel(failure_frame, 2U);
+    } catch (const std::runtime_error&) {
+        exception_propagated = true;
+    }
+    check(exception_propagated);
+    check(throwing_mempool.size() == 0U && throwing_relay.size() == 0U);
     return 0;
 }
