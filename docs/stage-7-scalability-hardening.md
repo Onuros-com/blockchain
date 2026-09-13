@@ -52,6 +52,10 @@ authenticated recovery material needed to continue independent validation.
 Pruning never authorizes deletion of data that is still required for a valid
 reorganization.
 
+The disabled-by-default horizon and chain-bound metadata format are specified
+in [Stage 7 conditional pruning](stage-7-pruning.md). Body deletion remains
+blocked until the storage and recovery checkpoints listed there are complete.
+
 Exit evidence:
 
 - archive and pruned nodes converge on the same active tip and shielded root;
