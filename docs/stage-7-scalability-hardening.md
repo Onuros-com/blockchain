@@ -18,6 +18,9 @@ authorization signatures, ciphertext and outer framing. Remove only redundant
 Onuros encoding. Orchard privacy fields are not shortened or omitted without a
 separate cryptographic review and attack tests.
 
+The canonical version-2 baseline and its reduction boundary are recorded in
+[Stage 7 private transaction byte accounting](stage-7-private-byte-accounting.md).
+
 Exit evidence:
 
 - a byte-for-byte layout report for representative one- and two-action
@@ -108,4 +111,3 @@ tests. Any proposal that changes authorization semantics, proof validity,
 history requirements or consensus activation is marked `ROADMAP BLOCKER` and
 pauses for explicit agreement. Routine implementation inside an agreed item
 does not renumber or replace an original roadmap stage.
-

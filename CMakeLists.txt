@@ -58,6 +58,9 @@ add_executable(onuros_private_tps_benchmark apps/private_tps_benchmark.cpp)
 target_link_libraries(onuros_private_tps_benchmark PRIVATE onuros_core)
 add_executable(onuros_stage7_bandwidth_benchmark apps/stage7_bandwidth_benchmark.cpp)
 target_link_libraries(onuros_stage7_bandwidth_benchmark PRIVATE onuros_core)
+add_executable(onuros_stage7_private_byte_accounting
+  apps/stage7_private_byte_accounting.cpp)
+target_link_libraries(onuros_stage7_private_byte_accounting PRIVATE onuros_core)
 add_executable(onuros_stage7_network_node apps/stage7_network_node.cpp)
 target_link_libraries(onuros_stage7_network_node PRIVATE onuros_core)
 add_executable(onuros_stage7_private_relay_node
@@ -104,7 +107,7 @@ if(OpenSSL_FOUND)
   endif()
 endif()
 
-foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_network_node onuros_stage7_private_relay_node onuros_mining_endpoint)
+foreach(target ${ONUROS_TESTS} onuros_local_node onuros_private_tps_benchmark onuros_stage7_bandwidth_benchmark onuros_stage7_private_byte_accounting onuros_stage7_network_node onuros_stage7_private_relay_node onuros_mining_endpoint)
   set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
@@ -158,6 +161,8 @@ add_test(NAME local_node_cli COMMAND onuros_local_node
          --data ${CMAKE_CURRENT_BINARY_DIR}/onuros-ci-node.db --blocks 3)
 add_test(NAME stage7_block_limit COMMAND onuros_stage7_bandwidth_benchmark)
 set_tests_properties(stage7_block_limit PROPERTIES TIMEOUT 120)
+add_test(NAME stage7_private_byte_accounting
+         COMMAND onuros_stage7_private_byte_accounting)
 if(NOT WIN32)
   add_test(NAME amd_kawpow_log_parser COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/tests/amd_kawpow_log_parser_test.sh

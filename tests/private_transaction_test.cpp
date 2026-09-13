@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -103,6 +104,40 @@ public:
 int main() {
     const auto original = bundle();
     const auto transaction = make_private_transaction(original);
+    const auto one_action_layout = private_transaction_byte_layout(1U);
+    check(one_action_layout.fixed_header == 65U);
+    check(one_action_layout.action_core == 160U);
+    check(one_action_layout.encrypted_notes == 580U);
+    check(one_action_layout.outgoing_ciphertexts == 80U);
+    check(one_action_layout.spend_authorizations == 64U);
+    check(one_action_layout.proof_length == 4U);
+    check(one_action_layout.proof == 4992U);
+    check(one_action_layout.binding_signature == 64U);
+    check(one_action_layout.body == 6009U);
+    check(one_action_layout.transaction_envelope == 6017U);
+    check(one_action_layout.single_transaction_batch == 6021U);
+
+    const auto two_action_layout = private_transaction_byte_layout(2U);
+    check(two_action_layout.action_core == 320U);
+    check(two_action_layout.encrypted_notes == 1160U);
+    check(two_action_layout.outgoing_ciphertexts == 160U);
+    check(two_action_layout.spend_authorizations == 128U);
+    check(two_action_layout.proof == 7264U);
+    check(two_action_layout.body == 9165U);
+    check(two_action_layout.transaction_envelope == 9173U);
+    check(two_action_layout.single_transaction_batch == 9177U);
+    check(transaction.body.size() == two_action_layout.body);
+    check(encode_transaction(transaction).size() ==
+          two_action_layout.transaction_envelope);
+    check(hash_hex(transaction_id(transaction)) ==
+          "24ae52efbcccf272a67253ca8e9a0ce9c5d4651b3242b0d0d05567eb3d628a51");
+
+    auto one_action = original;
+    one_action.actions.resize(1U);
+    one_action.proof.resize(orchard_proof_base_size +
+                            orchard_proof_per_action_size);
+    check(encode_private_bundle(one_action).size() == one_action_layout.body);
+
     const auto decoded = decode_private_transaction(transaction, limits());
     check(decoded.accepted());
     check(decoded.bundle->format_version == original.format_version);
