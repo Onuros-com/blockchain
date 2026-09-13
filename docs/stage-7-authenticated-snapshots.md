@@ -13,9 +13,9 @@ The version-1 manifest contains:
 - the exact shielded-state file size and double-SHA-256 content hash;
 - a checksum covering the canonical manifest encoding.
 
-The manifest ID is the double-SHA-256 hash of that complete encoding. Operators
-or a future checkpoint protocol authenticate this ID independently. Snapshot
-transport is untrusted and may use any mirror.
+The manifest ID is the double-SHA-256 hash of that complete encoding. The
+configured Ed25519 threshold authenticates this ID independently. Snapshot
+transport remains untrusted and may use any mirror.
 
 ## Import order
 
@@ -34,13 +34,17 @@ state is reopened through `PersistentShieldedState` before use.
 
 ## Authority boundary
 
-This checkpoint implements deterministic export metadata and fail-closed
-import. It deliberately does not select a signer, threshold, key rotation
-policy or consensus activation height. Production deployment must authenticate
-the manifest ID through a reviewed checkpoint or proof-chain policy. Supplying
-an unauthenticated ID obtained beside the snapshot provides integrity only and
-must not be presented as trustless synchronization.
+The selected policy is 2-of-3 for testnet and 3-of-5 for mainnet, with at least
+one offline security-key signature in every accepted threshold. Exact rules,
+custody requirements and the mainnet activation block are defined in
+[Stage 7 snapshot trust policy](stage-7-snapshot-trust-policy.md). Supplying an
+unauthenticated ID obtained beside the snapshot provides integrity only and
+must not be presented as authenticated synchronization.
 
-The remaining physical exit test is an independent late node importing a
-snapshot whose manifest ID was transferred over the chosen authenticated
-channel, then following headers and blocks to the same tip and shielded root.
+The deterministic late-node test generates independent Ed25519 keys, rejects
+insufficient, online-only, unknown, duplicate and altered signatures, imports
+only after a valid threshold, restarts at the exact tip/root and validates the
+next shielded-state transition. The remaining physical exit test is an
+independent machine importing a snapshot whose manifest ID was transferred
+over the chosen authenticated channel, then following headers and blocks to the
+same tip and shielded root.
