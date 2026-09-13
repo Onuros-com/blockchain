@@ -46,8 +46,39 @@ to one common anchor. The generator signs the canonical Onuros transaction
 digest after proof creation. Generation time is excluded from relay timing.
 
 The corpus is a private-test fixture, not repository content. Do not commit it
-or transfer it to the relay and observer. Its adjacent manifest records its
-hash, generator hash, transaction count and source commit.
+or leave it on the qualification relay and observer. Its adjacent manifest
+records its hash, generator hash, transaction count and source commit.
+
+Generation is resumable. The standard command writes an atomic part for each
+worker and reuses every complete part after an interruption. A part with a
+wrong header, anchor, range, record count or trailing data stops the run; it is
+never silently replaced. Parts are removed only after the final corpus has
+been assembled and synced.
+
+For preparation across several trusted hosts, divide one fixed shard set into
+non-overlapping half-open ranges. This example assigns four of twelve shards
+to one host:
+
+```bash
+bash scripts/generate-stage7-private-corpus-shards.sh generate \
+  "$HOME/orchard-66000.onc" 66000 12 0 4
+```
+
+Use `4 8` and `8 12` on the other preparation hosts. Transfer the resulting
+`.part-NNN` files and their range manifests to the origin under the same corpus
+basename, verify the recorded SHA-256 values, then assemble them:
+
+```bash
+bash scripts/generate-stage7-private-corpus-shards.sh merge \
+  "$HOME/onuros-stage7-private-load/orchard-66000.onc" 66000 12
+```
+
+All shards bind the total count, shard range and common Orchard anchor. The
+merge fails unless all ranges are present, contiguous and bound to that
+deterministic anchor. Shards contain private transaction bodies but no spending
+keys. Do not publish them or include them in evidence. A preparation host that
+will later act as relay or observer must remove its shard copies before the
+qualification run.
 
 ## Preflight
 

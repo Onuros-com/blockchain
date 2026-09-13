@@ -37,6 +37,7 @@ finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'utc_finished=%s\n' "$finished"
   printf 'transactions=%s\n' "$transactions"
   printf 'workers=%s\n' "$workers"
+  printf 'resumable_shards=true\n'
   printf 'corpus_bytes=%s\n' "$(stat -c %s "$output")"
   printf 'repository_commit=%s\n' "$(git -C "$repo_dir" rev-parse HEAD)"
   sha256sum "$output" "$generator"
