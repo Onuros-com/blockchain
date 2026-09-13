@@ -21,6 +21,9 @@ static_assert(sizeof(Amount) == sizeof(std::uint64_t) &&
 inline constexpr std::uint32_t private_transaction_envelope_version = 2U;
 inline constexpr std::uint32_t private_bundle_format_version = 2U;
 inline constexpr std::uint32_t orchard_proof_system_version = 1U;
+// Research-only commitment layout. This does not activate a new transaction
+// format or change ONP2 consensus validation.
+inline constexpr std::uint32_t private_commitment_scheme_version = 1U;
 inline constexpr std::uint8_t orchard_enabled_flags = 0x03U;
 inline constexpr std::size_t orchard_encrypted_note_size = 580U;
 inline constexpr std::size_t orchard_outgoing_ciphertext_size = 80U;
@@ -314,6 +317,82 @@ inline TransactionEnvelope make_private_transaction(
         const PrivateTransactionBundle& bundle) {
     return {private_transaction_envelope_version,
             encode_private_bundle(bundle)};
+}
+
+// Versioned commitment to the state-changing and wallet-recovery fields. The
+// anchor and all proof/signature bytes are deliberately excluded and committed
+// separately below. Calling encode_private_bundle first applies the existing
+// ONP2 canonical-form checks before any digest is produced.
+inline Hash256 private_effect_digest(
+        const PrivateTransactionBundle& bundle,
+        std::uint32_t scheme_version = private_commitment_scheme_version) {
+    if (scheme_version != private_commitment_scheme_version)
+        throw std::invalid_argument("unsupported private commitment scheme");
+    static_cast<void>(encode_private_bundle(bundle));
+
+    constexpr std::array<std::uint8_t, 21> domain{
+        'O', 'n', 'u', 'r', 'o', 's', 'P', 'r', 'i', 'v', 'a', 't', 'e',
+        'E', 'f', 'f', 'e', 'c', 't', 'V', '1'};
+    std::vector<std::uint8_t> preimage(domain.begin(), domain.end());
+    private_detail::append_little(preimage, scheme_version);
+    private_detail::append_little(preimage, private_transaction_envelope_version);
+    private_detail::append_little(preimage, bundle.format_version);
+    private_detail::append_little(preimage, bundle.proof_system_version);
+    preimage.push_back(bundle.flags);
+    private_detail::append_little(
+        preimage, static_cast<std::uint64_t>(bundle.value_balance));
+    private_detail::append_little(
+        preimage, static_cast<std::uint64_t>(bundle.fee));
+    private_detail::append_little(
+        preimage, static_cast<std::uint32_t>(bundle.actions.size()));
+    for (const auto& action : bundle.actions) {
+        private_detail::append_hash(preimage, action.value_commitment);
+        private_detail::append_hash(preimage, action.nullifier);
+        private_detail::append_hash(preimage, action.randomized_key);
+        private_detail::append_hash(preimage, action.note_commitment);
+        private_detail::append_hash(preimage, action.ephemeral_key);
+        private_detail::append_array(preimage, action.encrypted_note);
+        private_detail::append_array(preimage, action.outgoing_ciphertext);
+    }
+    return double_sha256(preimage);
+}
+
+// Commits to the exact authorizing payload and embeds the effect digest, so
+// authorization data cannot be transplanted onto different private effects.
+inline Hash256 private_authorizing_data_commitment(
+        const PrivateTransactionBundle& bundle,
+        std::uint32_t scheme_version = private_commitment_scheme_version) {
+    const auto effect = private_effect_digest(bundle, scheme_version);
+    constexpr std::array<std::uint8_t, 19> domain{
+        'O', 'n', 'u', 'r', 'o', 's', 'P', 'r', 'i', 'v', 'a', 't', 'e',
+        'A', 'u', 't', 'h', 'V', '1'};
+    std::vector<std::uint8_t> preimage(domain.begin(), domain.end());
+    private_detail::append_little(preimage, scheme_version);
+    private_detail::append_hash(preimage, effect);
+    private_detail::append_hash(preimage, bundle.anchor);
+    private_detail::append_little(
+        preimage, static_cast<std::uint32_t>(bundle.actions.size()));
+    for (const auto& action : bundle.actions)
+        private_detail::append_array(preimage, action.spend_authorization);
+    private_detail::append_sized(preimage, bundle.proof);
+    private_detail::append_array(preimage, bundle.binding_signature);
+    return double_sha256(preimage);
+}
+
+inline Hash256 private_effect_authorization_commitment(
+        const PrivateTransactionBundle& bundle,
+        std::uint32_t scheme_version = private_commitment_scheme_version) {
+    const auto effect = private_effect_digest(bundle, scheme_version);
+    const auto authorization =
+        private_authorizing_data_commitment(bundle, scheme_version);
+    constexpr std::array<std::uint8_t, 19> domain{
+        'O', 'n', 'u', 'r', 'o', 's', 'P', 'r', 'i', 'v', 'a', 't', 'e',
+        'P', 'a', 'i', 'r', 'V', '1'};
+    std::vector<std::uint8_t> preimage(domain.begin(), domain.end());
+    private_detail::append_little(preimage, scheme_version);
+    private_detail::append_hash(preimage, effect);
+    private_detail::append_hash(preimage, authorization);
+    return double_sha256(preimage);
 }
 
 // The Orchard spend and binding signatures authorize this digest. It commits
