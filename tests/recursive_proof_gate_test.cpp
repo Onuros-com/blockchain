@@ -29,6 +29,8 @@ RecursiveProofMeasurements passing() {
     result.propagation_p99_ms =
         recursive_gate_propagation_p99_limit_ms - 1U;
     result.peak_vram_mib = recursive_gate_rtx3060_vram_limit_mib;
+    result.verified_onp2_transfers = recursive_gate_target_transfers;
+    result.recursive_backend = true;
     result.deterministic = true;
     result.binds_parent_and_pow_block = true;
     result.binds_ordered_effects_and_authorizations = true;
@@ -36,6 +38,8 @@ RecursiveProofMeasurements passing() {
     result.binds_nullifiers_values_fees_and_reward = true;
     result.rejects_corrupted_proof = true;
     result.rejects_withheld_proof = true;
+    result.rejects_malformed_proof = true;
+    result.recovers_after_interruption = true;
     return result;
 }
 
@@ -77,6 +81,14 @@ int main() {
     check(contains(evaluate_recursive_proof_gate(candidate),
                    RecursiveProofGateFailure::vram_too_high));
     candidate = passing();
+    candidate.recursive_backend = false;
+    check(contains(evaluate_recursive_proof_gate(candidate),
+                   RecursiveProofGateFailure::missing_recursive_backend));
+    candidate = passing();
+    candidate.verified_onp2_transfers--;
+    check(contains(evaluate_recursive_proof_gate(candidate),
+                   RecursiveProofGateFailure::unverified_onp2_inputs));
+    candidate = passing();
     candidate.deterministic = false;
     check(contains(evaluate_recursive_proof_gate(candidate),
                    RecursiveProofGateFailure::nondeterministic));
@@ -105,5 +117,16 @@ int main() {
     candidate.rejects_withheld_proof = false;
     check(contains(evaluate_recursive_proof_gate(candidate),
                    RecursiveProofGateFailure::withheld_proof_accepted));
+    candidate = passing();
+    candidate.rejects_malformed_proof = false;
+    check(contains(evaluate_recursive_proof_gate(candidate),
+                   RecursiveProofGateFailure::malformed_proof_accepted));
+    candidate = passing();
+    candidate.recovers_after_interruption = false;
+    check(contains(evaluate_recursive_proof_gate(candidate),
+                   RecursiveProofGateFailure::recovery_failed));
+    check(recursive_proof_gate_failure_name(
+              RecursiveProofGateFailure::missing_recursive_backend) ==
+          "missing_recursive_backend");
     return 0;
 }
