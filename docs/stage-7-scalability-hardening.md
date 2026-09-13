@@ -114,7 +114,9 @@ Recursive or block-level proof aggregation remains a research track because it
 changes the proof and consensus boundary. It may be activated only after a
 security design, independent review and adversarial tests. A separate execution
 layer is not part of the current roadmap; Onuros remains a single Layer-1
-design.
+design. The machine-readable feasibility contract and current closed-gate
+result are recorded in
+[Stage 7 recursive block-proof feasibility gate](stage-7-recursive-proof-gate.md).
 
 ## Change control and reminders
 
