@@ -10,7 +10,7 @@ audit points.
 | Gate | Current evidence | Status |
 |---|---|---|
 | 1. Canonical framing and handshake on Linux and Windows | Core workflow run 34704080168 passed Ubuntu 24.04, Windows Server 2022, ASan/UBSan, and real-Orchard admission jobs | Automated gate passed |
-| 2. Three fresh nodes synchronize from genesis | `run-stage7-three-process.sh` starts three processes with isolated databases and checks one durable tip | Loopback process gate passed; published-node run pending |
+| 2. Three fresh nodes synchronize from genesis | The loopback process gate and authenticated independent-host synchronization/evidence tooling check one durable tip | Tooling and loopback TLS gate passed; published-node run pending |
 | 3. Restart and late synchronization | Three-process gate restarts a persisted client and checks height/tip recovery; state coordinator tests recover shielded state | Automated gate passed |
 | 4. Competing branches converge by work | Chain-index tests and private commit coordinator tests cover a stronger-branch reorganization and restart after the block database switches | Automated gate passed |
 | 5. Malformed, oversized and flooding traffic remains bounded | Frame decoder, event loop, admission, block transfer, fuzz, per-tick flood, sanitizer, and peer-policy tests in run 34704080168 | Automated gate passed |
@@ -105,6 +105,13 @@ replace Stage 7 network Gates 6 or 7.
 - `apps/stage7_private_relay_node.cpp`: three-process private relay harness.
 - `apps/stage7_private_load_node.cpp`: physical real-Orchard, mutual-TLS relay
   load executable with origin, relay and observer roles.
+- `apps/stage7_network_node.cpp`: loopback and fail-closed mutual-TLS
+  independent-host synchronization with initial, late-join and restart modes.
+- `scripts/capture-stage7-sync-evidence.sh` and
+  `scripts/validate-stage7-sync-evidence.sh`: sanitized host capture and
+  cross-host synchronization evidence validation.
+- `docs/stage-7-published-sync-runbook.md`: physical published-host
+  synchronization and restart procedure.
 - `scripts/generate-stage7-private-corpus.sh`: non-overwriting generator for
   common-anchor, distinct valid Orchard transactions.
 - `docs/stage-7-private-relay-runbook.md`: physical Gate 6 operating procedure.
