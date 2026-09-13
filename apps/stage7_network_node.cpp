@@ -3,16 +3,21 @@
 #include "onuros/local_node.hpp"
 #include "onuros/p2p_transport.hpp"
 #include "onuros/stage7_relay.hpp"
+#ifdef ONUROS_OPENSSL_ENABLED
+#include "onuros/tls_transport.hpp"
+#endif
 
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace onuros;
@@ -76,7 +81,7 @@ void ensure_relay_blocks(LocalNode& node, Height target_height) {
         throw std::runtime_error("server database exceeds requested height");
 }
 
-bool send_all(TcpConnection& connection, const std::vector<std::uint8_t>& bytes) {
+bool send_all(PeerTransport& connection, const std::vector<std::uint8_t>& bytes) {
     std::size_t offset = 0U;
     for (unsigned attempt = 0U; attempt < 10'000U && offset < bytes.size(); ++attempt) {
         const auto result = connection.send_some(bytes.data() + offset,
@@ -89,7 +94,7 @@ bool send_all(TcpConnection& connection, const std::vector<std::uint8_t>& bytes)
     return offset == bytes.size();
 }
 
-P2pFrame receive_frame(TcpConnection& connection, FrameStreamDecoder& stream) {
+P2pFrame receive_frame(PeerTransport& connection, FrameStreamDecoder& stream) {
     std::array<std::uint8_t, 4096U> bytes{};
     for (unsigned attempt = 0U; attempt < 10'000U; ++attempt) {
         const auto parsed = stream.next();
@@ -108,7 +113,7 @@ P2pFrame receive_frame(TcpConnection& connection, FrameStreamDecoder& stream) {
     throw std::runtime_error("peer message timeout");
 }
 
-void send_frame(TcpConnection& connection, P2pMessageType type,
+void send_frame(PeerTransport& connection, P2pMessageType type,
                 std::uint64_t request_id,
                 const std::vector<std::uint8_t>& payload) {
     const auto encoded = encode_p2p_frame(
@@ -117,9 +122,9 @@ void send_frame(TcpConnection& connection, P2pMessageType type,
         throw std::runtime_error("peer send failed");
 }
 
-void exchange_hello(TcpConnection& connection, FrameStreamDecoder& stream,
+void exchange_hello(PeerTransport& connection, FrameStreamDecoder& stream,
                     const Hash256& genesis, std::uint64_t local_nonce,
-                    Height best_height) {
+                    Height best_height, bool require_authenticated) {
     HelloMessage hello;
     hello.chain_id = test_chain_id();
     hello.genesis_hash = genesis;
@@ -133,27 +138,32 @@ void exchange_hello(TcpConnection& connection, FrameStreamDecoder& stream,
     policy.genesis_hash = genesis;
     policy.local_nonce = local_nonce;
     policy.required_services = p2p_service_compact_relay;
+    policy.require_authenticated_transport = require_authenticated;
     PeerSession session(policy);
-    if (session.receive(remote_frame, false) != PeerSessionError::none ||
+    if (session.receive(remote_frame, connection.authenticated()) !=
+            PeerSessionError::none ||
         session.state() != PeerSessionState::established)
         throw std::runtime_error("peer handshake rejected");
 }
 
-std::optional<TcpConnection> connect_with_retry(std::uint16_t port) {
+std::optional<TcpConnection> connect_with_retry(const std::string& address,
+                                                std::uint16_t port) {
     for (unsigned attempt = 0U; attempt < 5000U; ++attempt) {
-        auto connection = TcpConnection::connect_ipv4("127.0.0.1", port);
+        auto connection = TcpConnection::connect_ipv4(address, port);
         if (connection) return connection;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return std::nullopt;
 }
 
-void serve_peer(TcpConnection& connection, const LocalNode& node,
-                const Block& genesis, std::uint64_t nonce) {
+void serve_peer(PeerTransport& connection, const LocalNode& node,
+                const Block& genesis, std::uint64_t nonce,
+                bool require_authenticated) {
     FrameStreamDecoder stream({}, 2U * 1024U * 1024U);
     const auto* tip = node.store().index().active_tip();
     if (tip == nullptr) throw std::runtime_error("server tip is missing");
-    exchange_hello(connection, stream, block_id(genesis.header), nonce, tip->height);
+    exchange_hello(connection, stream, block_id(genesis.header), nonce,
+                   tip->height, require_authenticated);
 
     const auto header_request_frame = receive_frame(connection, stream);
     if (header_request_frame.type != P2pMessageType::get_headers)
@@ -210,53 +220,176 @@ void serve_peer(TcpConnection& connection, const LocalNode& node,
     }
 }
 
-void run_server(const std::filesystem::path& data, std::uint16_t port,
-                unsigned peers, Height target_height) {
-    LocalNode node(parameters(), test_pow);
-    if (node.open(data).error != LocalNodeError::none)
-        throw std::runtime_error("server database open failed");
-    const auto genesis = ensure_genesis(node);
-    ensure_relay_blocks(node, target_height);
-    auto listener = TcpListener::listen_loopback(port);
-    if (!listener) throw std::runtime_error("server listen failed");
-    std::cout << "READY port=" << listener->port() << std::endl;
-    for (unsigned peer = 0U; peer < peers; ++peer) {
-        std::optional<TcpConnection> connection;
-        for (unsigned attempt = 0U; attempt < 10'000U && !connection; ++attempt) {
-            connection = listener->accept_one();
-            if (!connection)
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        if (!connection) throw std::runtime_error("server accept timeout");
-        serve_peer(*connection, node, genesis, 10'000U + peer);
+struct NetworkOptions {
+    std::string role;
+    std::filesystem::path data;
+    std::uint16_t port = 0U;
+    unsigned peers = 2U;
+    std::uint64_t nonce = 20'000U;
+    Height blocks = 3U;
+    std::string bind = "127.0.0.1";
+    std::string address = "127.0.0.1";
+    std::filesystem::path certificate;
+    std::filesystem::path private_key;
+    std::filesystem::path ca;
+    std::vector<std::string> expected_peers;
+    std::filesystem::path manifest;
+    std::string node_id;
+
+    bool tls_enabled() const noexcept {
+        return !certificate.empty() || !private_key.empty() || !ca.empty() ||
+               !expected_peers.empty();
     }
-    std::cout << "SYNCED peers=" << peers
-              << " tip=" << hash_hex(node.store().index().active_tip()->id)
-              << std::endl;
+};
+
+void write_manifest(const NetworkOptions& options, const std::string& mode,
+                    Height height, const Hash256& tip,
+                    const std::string& cipher, bool authenticated,
+                    std::uint64_t useful_bytes = 0U) {
+    if (options.manifest.empty()) return;
+    if (options.node_id.empty())
+        throw std::runtime_error("manifest requires node id");
+    const auto parent = options.manifest.parent_path();
+    if (!parent.empty()) std::filesystem::create_directories(parent);
+    std::ofstream output(options.manifest);
+    if (!output) throw std::runtime_error("manifest open failed");
+    output << "role=" << options.role << '\n'
+           << "node_id=" << options.node_id << '\n'
+           << "mode=" << mode << '\n'
+           << "height=" << height << '\n'
+           << "tip=" << hash_hex(tip) << '\n'
+           << "useful_bytes=" << useful_bytes << '\n'
+           << "transport_authenticated="
+           << (authenticated ? "true" : "false") << '\n'
+           << "tls_cipher=" << cipher << '\n'
+           << "synchronization=PASS\n"
+           << "process_exit_status=0\n"
+           << "private_payloads_logged=false\n";
 }
 
-void run_client(const std::filesystem::path& data, std::uint16_t port,
-                std::uint64_t nonce, Height target_height) {
+#ifdef ONUROS_OPENSSL_ENABLED
+void complete_tls_handshake(TlsPeerTransport& transport) {
+    for (unsigned attempt = 0U; attempt < 10'000U; ++attempt) {
+        const auto status = transport.handshake();
+        if (status == TlsStatus::ok) return;
+        if (status == TlsStatus::error)
+            throw std::runtime_error("TLS handshake failed");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    throw std::runtime_error("TLS handshake timeout");
+}
+#endif
+
+std::optional<TcpConnection> accept_with_retry(TcpListener& listener) {
+    for (unsigned attempt = 0U; attempt < 10'000U; ++attempt) {
+        auto connection = listener.accept_one();
+        if (connection) return connection;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return std::nullopt;
+}
+
+void run_server(const NetworkOptions& options) {
     LocalNode node(parameters(), test_pow);
-    if (node.open(data).error != LocalNodeError::none)
+    if (node.open(options.data).error != LocalNodeError::none)
+        throw std::runtime_error("server database open failed");
+    const auto genesis = ensure_genesis(node);
+    ensure_relay_blocks(node, options.blocks);
+#ifdef ONUROS_OPENSSL_ENABLED
+    std::optional<TlsContext> tls_context;
+    if (options.tls_enabled()) {
+        tls_context = TlsContext::mutual(options.certificate.string(),
+            options.private_key.string(), options.ca.string());
+        if (!tls_context) throw std::runtime_error("server TLS material failed");
+    }
+#endif
+    auto listener = TcpListener::listen_ipv4(options.bind, options.port);
+    if (!listener) throw std::runtime_error("server listen failed");
+    std::cout << "READY port=" << listener->port() << std::endl;
+    std::string cipher = "none";
+    for (unsigned peer = 0U; peer < options.peers; ++peer) {
+        auto connection = accept_with_retry(*listener);
+        if (!connection) throw std::runtime_error("server accept timeout");
+        if (options.tls_enabled()) {
+#ifdef ONUROS_OPENSSL_ENABLED
+            TlsPeerTransport transport(*tls_context, std::move(*connection),
+                TlsRole::server, options.expected_peers.at(peer));
+            complete_tls_handshake(transport);
+            cipher = transport.cipher() == nullptr ? "unknown" :
+                                                     transport.cipher();
+            serve_peer(transport, node, genesis, 10'000U + peer, true);
+#else
+            throw std::runtime_error("TLS support unavailable");
+#endif
+        } else {
+            TcpPeerTransport transport(std::move(*connection));
+            serve_peer(transport, node, genesis, 10'000U + peer, false);
+        }
+    }
+    const auto* tip = node.store().index().active_tip();
+    if (tip == nullptr) throw std::runtime_error("server tip is missing");
+    write_manifest(options, "served", tip->height, tip->id, cipher,
+                   options.tls_enabled());
+    std::cout << "SYNCED peers=" << options.peers
+              << " tip=" << hash_hex(tip->id) << std::endl;
+    std::cout << "stage7_sync=PASS role=server node_id=" << options.node_id
+              << " height=" << tip->height
+              << " tip=" << hash_hex(tip->id) << std::endl;
+}
+
+void run_client(const NetworkOptions& options) {
+    LocalNode node(parameters(), test_pow);
+    if (node.open(options.data).error != LocalNodeError::none)
         throw std::runtime_error("client database open failed");
     const auto genesis = ensure_genesis(node);
     const auto* existing = node.store().index().active_tip();
-    if (existing != nullptr && existing->height == target_height) {
-        std::cout << "RECOVERED height=" << target_height
+    if (existing != nullptr && existing->height == options.blocks) {
+        write_manifest(options, "recovered", existing->height, existing->id,
+                       "not_applicable", false);
+        std::cout << "RECOVERED height=" << options.blocks
                   << " tip=" << hash_hex(existing->id)
+                  << std::endl;
+        std::cout << "stage7_sync=PASS role=client node_id="
+                  << options.node_id << " mode=recovered height="
+                  << existing->height << " tip=" << hash_hex(existing->id)
                   << std::endl;
         return;
     }
-    auto connection = connect_with_retry(port);
+    auto connection = connect_with_retry(options.address, options.port);
     if (!connection) throw std::runtime_error("client connect timeout");
+    std::string cipher = "none";
+    std::optional<TcpPeerTransport> tcp_transport;
+#ifdef ONUROS_OPENSSL_ENABLED
+    std::optional<TlsContext> tls_context;
+    std::optional<TlsPeerTransport> tls_transport;
+#endif
+    PeerTransport* transport = nullptr;
+    if (options.tls_enabled()) {
+#ifdef ONUROS_OPENSSL_ENABLED
+        tls_context = TlsContext::mutual(options.certificate.string(),
+            options.private_key.string(), options.ca.string());
+        if (!tls_context) throw std::runtime_error("client TLS material failed");
+        tls_transport.emplace(*tls_context, std::move(*connection),
+                              TlsRole::client, options.expected_peers.front());
+        complete_tls_handshake(*tls_transport);
+        cipher = tls_transport->cipher() == nullptr ? "unknown" :
+                                                     tls_transport->cipher();
+        transport = &*tls_transport;
+#else
+        throw std::runtime_error("TLS support unavailable");
+#endif
+    } else {
+        tcp_transport.emplace(std::move(*connection));
+        transport = &*tcp_transport;
+    }
     FrameStreamDecoder stream({}, 2U * 1024U * 1024U);
-    exchange_hello(*connection, stream, block_id(genesis.header), nonce,
-                   existing == nullptr ? 0U : existing->height);
+    exchange_hello(*transport, stream, block_id(genesis.header), options.nonce,
+                   existing == nullptr ? 0U : existing->height,
+                   options.tls_enabled());
     if (existing == nullptr) throw std::runtime_error("local genesis is missing");
-    send_frame(*connection, P2pMessageType::get_headers, 2U,
+    send_frame(*transport, P2pMessageType::get_headers, 2U,
                encode_header_request({{existing->id}, {}}));
-    const auto headers_frame = receive_frame(*connection, stream);
+    const auto headers_frame = receive_frame(*transport, stream);
     if (headers_frame.type != P2pMessageType::headers ||
         headers_frame.request_id != 2U)
         throw std::runtime_error("expected header batch");
@@ -271,10 +404,10 @@ void run_client(const std::filesystem::path& data, std::uint16_t port,
             HeaderSyncError::none)
         throw std::runtime_error("could not seed local header chain");
     const auto header_result = header_chain.accept(
-        *headers, 100U + target_height * 60U);
+        *headers, 100U + options.blocks * 60U);
     if (header_result.error != HeaderSyncError::none ||
         !header_result.stronger_tip ||
-        header_chain.best_tip()->header.height != target_height)
+        header_chain.best_tip()->header.height != options.blocks)
         throw std::runtime_error("header chain validation failed");
 
     ValidatedRelayPool pool(512U, 1U << 20U);
@@ -288,7 +421,7 @@ void run_client(const std::filesystem::path& data, std::uint16_t port,
     limits.maximum_total_transfer_bytes = 1U << 20U;
     std::uint64_t request_id = 3U;
     for (const auto& expected_header : *headers) {
-        const auto compact_frame = receive_frame(*connection, stream);
+        const auto compact_frame = receive_frame(*transport, stream);
         if (compact_frame.type != P2pMessageType::compact_block ||
             compact_frame.request_id != request_id)
             throw std::runtime_error("expected compact block");
@@ -307,11 +440,11 @@ void run_client(const std::filesystem::path& data, std::uint16_t port,
             });
         const auto request = download.start(immediate);
         if (!request) throw std::runtime_error("expected missing transactions");
-        send_frame(*connection, P2pMessageType::get_block_transactions, request_id,
+        send_frame(*transport, P2pMessageType::get_block_transactions, request_id,
                    encode_missing_transaction_request(*request));
         CompactDownloadResult completed;
         while (!completed.block) {
-            const auto chunk_frame = receive_frame(*connection, stream);
+            const auto chunk_frame = receive_frame(*transport, stream);
             if (chunk_frame.type != P2pMessageType::block_transactions ||
                 chunk_frame.request_id != request_id ||
                 !coordinator.accepts_from(identifier, 1U, 0U))
@@ -331,55 +464,97 @@ void run_client(const std::filesystem::path& data, std::uint16_t port,
         ++request_id;
     }
     const auto* tip = node.store().index().active_tip();
-    if (tip == nullptr || tip->height != target_height)
+    if (tip == nullptr || tip->height != options.blocks)
         throw std::runtime_error("client did not activate synchronized block");
-    std::cout << "SYNCED height=" << target_height
+    write_manifest(options, "initial", tip->height, tip->id, cipher,
+                   options.tls_enabled(), coordinator.accounting().useful_bytes);
+    std::cout << "SYNCED height=" << options.blocks
               << " useful_bytes=" << coordinator.accounting().useful_bytes
+              << " tip=" << hash_hex(tip->id) << std::endl;
+    std::cout << "stage7_sync=PASS role=client node_id=" << options.node_id
+              << " mode=initial height=" << tip->height
               << " tip=" << hash_hex(tip->id) << std::endl;
 }
 
 void usage(const char* program) {
     std::cerr << "Usage: " << program
               << " --role server|client --data PATH --port PORT"
-                 " [--peers COUNT] [--nonce VALUE] [--blocks HEIGHT]\n";
+                 " [--peers COUNT] [--nonce VALUE] [--blocks HEIGHT]"
+                 " [--bind ADDRESS|--address ADDRESS] [--manifest FILE]"
+                 " [--node-id ID]"
+                 " [--cert FILE --key FILE --ca FILE"
+                 " --expected-peer DNS ...]\n";
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
     try {
-        std::string role;
-        std::filesystem::path data;
-        std::uint16_t port = 0U;
-        unsigned peers = 2U;
-        std::uint64_t nonce = 20'000U;
-        Height blocks = 3U;
+        NetworkOptions options;
         for (int i = 1; i < argc; ++i) {
             const std::string argument = argv[i];
-            if (argument == "--role" && i + 1 < argc) role = argv[++i];
-            else if (argument == "--data" && i + 1 < argc) data = argv[++i];
+            if (argument == "--role" && i + 1 < argc)
+                options.role = argv[++i];
+            else if (argument == "--data" && i + 1 < argc)
+                options.data = argv[++i];
             else if (argument == "--port" && i + 1 < argc) {
                 const auto value = std::stoul(argv[++i]);
                 if (value == 0U || value > 65'535U)
                     throw std::invalid_argument("invalid port");
-                port = static_cast<std::uint16_t>(value);
+                options.port = static_cast<std::uint16_t>(value);
             } else if (argument == "--peers" && i + 1 < argc) {
-                peers = static_cast<unsigned>(std::stoul(argv[++i]));
+                options.peers = static_cast<unsigned>(std::stoul(argv[++i]));
             } else if (argument == "--nonce" && i + 1 < argc) {
-                nonce = std::stoull(argv[++i]);
+                options.nonce = std::stoull(argv[++i]);
             } else if (argument == "--blocks" && i + 1 < argc) {
-                blocks = std::stoull(argv[++i]);
-                if (blocks == 0U) throw std::invalid_argument("invalid block count");
+                options.blocks = std::stoull(argv[++i]);
+                if (options.blocks == 0U)
+                    throw std::invalid_argument("invalid block count");
+            } else if (argument == "--bind" && i + 1 < argc) {
+                options.bind = argv[++i];
+            } else if (argument == "--address" && i + 1 < argc) {
+                options.address = argv[++i];
+            } else if (argument == "--cert" && i + 1 < argc) {
+                options.certificate = argv[++i];
+            } else if (argument == "--key" && i + 1 < argc) {
+                options.private_key = argv[++i];
+            } else if (argument == "--ca" && i + 1 < argc) {
+                options.ca = argv[++i];
+            } else if (argument == "--expected-peer" && i + 1 < argc) {
+                options.expected_peers.emplace_back(argv[++i]);
+            } else if (argument == "--manifest" && i + 1 < argc) {
+                options.manifest = argv[++i];
+            } else if (argument == "--node-id" && i + 1 < argc) {
+                options.node_id = argv[++i];
             } else {
                 throw std::invalid_argument("unknown or incomplete argument");
             }
         }
-        if (data.empty() || port == 0U || (role != "server" && role != "client"))
+        if (options.data.empty() || options.port == 0U ||
+            (options.role != "server" && options.role != "client"))
             throw std::invalid_argument("required argument missing");
+        if (options.peers == 0U || options.peers > 64U)
+            throw std::invalid_argument("invalid peer count");
+        if (options.tls_enabled()) {
+            if (options.certificate.empty() || options.private_key.empty() ||
+                options.ca.empty())
+                throw std::invalid_argument("incomplete TLS configuration");
+            const auto expected = options.role == "server" ? options.peers : 1U;
+            if (options.expected_peers.size() != expected)
+                throw std::invalid_argument("wrong expected-peer count");
+        }
+        const auto non_loopback = options.role == "server"
+            ? options.bind != "127.0.0.1"
+            : options.address != "127.0.0.1";
+        if (non_loopback && !options.tls_enabled())
+            throw std::invalid_argument(
+                "non-loopback synchronization requires mutual TLS");
+        if (!options.manifest.empty() && options.node_id.empty())
+            throw std::invalid_argument("manifest requires node id");
         SocketRuntime runtime;
         if (!runtime.ready()) throw std::runtime_error("socket runtime failed");
-        if (role == "server") run_server(data, port, peers, blocks);
-        else run_client(data, port, nonce, blocks);
+        if (options.role == "server") run_server(options);
+        else run_client(options);
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "ERROR: " << error.what() << '\n';

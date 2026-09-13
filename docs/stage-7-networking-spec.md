@@ -10,7 +10,11 @@ a fail-closed full-node admission boundary gates private transactions before
 relay and delegates blocks to full-node validation; invalid transaction traffic
 is scored by the live event loop and disconnects at a bounded threshold. The
 first fail-closed KawPoW mining endpoint is implemented on loopback. Active-tip block/shielded commits and stronger-branch reorganizations have a
-write-ahead recovery coordinator. An identity-verifying TLS probe, certificate generator, and evidence capture path are implemented for independent hosts. The physical independent-machine run remains open.
+write-ahead recovery coordinator. An identity-verifying TLS probe, certificate
+generator, and evidence capture path are implemented for independent hosts.
+The synchronization executable now has a fail-closed mutual-TLS
+independent-host mode with host-local manifests, evidence capture and a
+cross-host validator. The physical independent-machine run remains open.
 
 ## Purpose
 
@@ -139,6 +143,15 @@ trade-off must be explicit rather than hidden behind the word "lightweight".
   its header chain, request only then the missing transactions, reconstruct and
   independently validate each block, then a restarted node proves durable tip
   recovery. Each repeat uses isolated evidence files.
+- An authenticated independent-host form of the synchronization executable
+  accepts an operator-selected bind or destination address only when complete
+  mutual-TLS material and the expected peer identities are configured. It
+  emits machine-readable server, initial-client, late-client and recovered
+  restart manifests. The capture and bundle validator require distinct node
+  identities, one commit, one CA and one final tip, and reject modified files,
+  symbolic links and private-key material. The loopback orchestration exercises
+  the TLS path and a duplicate-node-identity rejection; physical evidence is
+  still required.
 - A separate three-process private relay gate creates one canonical version-2
   private envelope at an origin process, admits it locally, relays it through a
   second process, and independently admits it at an observer. All three

@@ -75,6 +75,10 @@ target_link_libraries(onuros_stage7_private_relay_node PRIVATE onuros_core)
 add_executable(onuros_mining_endpoint apps/mining_endpoint_main.cpp)
 target_link_libraries(onuros_mining_endpoint PRIVATE onuros_core onuros_kawpow)
 if(OpenSSL_FOUND)
+  target_compile_definitions(onuros_stage7_network_node PRIVATE
+    ONUROS_OPENSSL_ENABLED=1)
+  target_link_libraries(onuros_stage7_network_node PRIVATE
+    OpenSSL::SSL OpenSSL::Crypto)
   add_executable(tls_transport_test tests/tls_transport_test.cpp)
   add_executable(onuros_stage7_tls_probe apps/stage7_tls_probe.cpp)
   foreach(target tls_transport_test onuros_stage7_tls_probe)
@@ -207,6 +211,10 @@ if(OpenSSL_FOUND AND NOT WIN32)
   add_test(NAME stage7_independent_tls_loopback COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-independent-tls-loopback.sh
            $<TARGET_FILE:onuros_stage7_tls_probe>)
+  add_test(NAME stage7_independent_sync_loopback COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run-stage7-independent-sync-loopback.sh
+           $<TARGET_FILE:onuros_stage7_network_node>
+           ${CMAKE_CURRENT_BINARY_DIR}/stage7-independent-sync)
 endif()
 if(ONUROS_ORCHARD_FFI_LIBRARY)
   add_test(NAME private_node_orchard_pipeline

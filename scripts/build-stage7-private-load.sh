@@ -19,11 +19,13 @@ cmake -S "$repo_dir" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release \
   -DONUROS_ORCHARD_FFI_LIBRARY="$ffi"
 cmake --build "$build_dir" --parallel "${ONUROS_BUILD_JOBS:-$(nproc)}" \
   --target onuros_stage7_private_load_node \
-           onuros_stage7_block_propagation_node
+           onuros_stage7_block_propagation_node \
+           onuros_stage7_network_node
 
 printf 'stage7_private_load_build=PASS\n'
 printf 'node=%s\n' "$build_dir/onuros_stage7_private_load_node"
 printf 'block_node=%s\n' \
   "$build_dir/onuros_stage7_block_propagation_node"
+printf 'sync_node=%s\n' "$build_dir/onuros_stage7_network_node"
 printf 'corpus_generator=%s\n' \
   "$repo_dir/crypto/orchard-ffi/target/release/private_verify_benchmark"
