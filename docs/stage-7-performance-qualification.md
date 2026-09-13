@@ -49,8 +49,21 @@ relayed_unique=
 duplicate_transactions=
 invalid_transactions=
 queue_high_watermark=
+queue_limit=
+verification_batches=
+verification_tasks=
+verification_workers=
+verification_pool_starts=
+verification_seconds=
+admitted_tps=
 divergent_transactions=
 ```
+
+The verification workers are created once per process and reused for every
+transaction frame. `verification_pool_starts` must equal one. The reported
+queue high-watermark must be non-zero, must not exceed `queue_limit`, and is
+measured from work actually submitted to the verifier pool; a constant or
+placeholder value is not evidence.
 
 The sender additionally records request latency percentiles and rejected
 submissions. Observers record the first and last accepted transaction IDs as
@@ -63,6 +76,7 @@ hashes only.
 - all three nodes contain the same admitted transaction-ID set;
 - `divergent_transactions=0`;
 - no verifier, relay, or network queue exceeds its configured hard limit;
+- the persistent verifier pool is not restarted during the interval;
 - no process exits, restarts, or disables verification during the interval;
 - logs contain no private transaction bodies.
 
