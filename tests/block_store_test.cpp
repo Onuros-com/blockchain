@@ -84,13 +84,58 @@ int main() {
               "active tip recovered exactly");
         check(restarted.find(genesis_id) != nullptr, "stored block lookup works");
 
+        const PruningPolicy pruning_policy{true, 1U, 1U};
+        const auto checkpoint = make_pruning_checkpoint(
+            pruning_policy, genesis_id, *restarted.index().active_tip(),
+            stronger.header.shielded_root);
+        check(checkpoint.accepted(), "pruning checkpoint created");
+        auto wrong_checkpoint = *checkpoint.checkpoint;
+        wrong_checkpoint.active_tip.back() ^= 1U;
+        const auto size_before_compaction = std::filesystem::file_size(path);
+        check(restarted.compact(pruning_policy, wrong_checkpoint) ==
+                  BlockStoreError::invalid_chain &&
+              std::filesystem::file_size(path) == size_before_compaction,
+              "mismatched checkpoint cannot rewrite database");
+        check(restarted.compact(pruning_policy, *checkpoint.checkpoint) ==
+                  BlockStoreError::none &&
+              std::filesystem::file_size(path) < size_before_compaction,
+              "validated checkpoint atomically compacts eligible bodies");
+        check(restarted.body_availability(genesis_id) ==
+                  BlockBodyAvailability::retained &&
+              restarted.body_availability(block_id(main.header)) ==
+                  BlockBodyAvailability::archive_required &&
+              restarted.body_availability(fork_id) ==
+                  BlockBodyAvailability::archive_required &&
+              restarted.body_availability(block_id(stronger.header)) ==
+                  BlockBodyAvailability::retained &&
+              restarted.body_availability(Hash256{}) ==
+                  BlockBodyAvailability::unknown,
+              "compacted store distinguishes archive fallback from unknown data");
+
+        PersistentBlockStore pruned_restart(limits, 1U << 20U);
+        check(pruned_restart.open(path) == BlockStoreError::none &&
+              pruned_restart.blocks().size() == 4U &&
+              pruned_restart.body_availability(block_id(main.header)) ==
+                  BlockBodyAvailability::archive_required &&
+              pruned_restart.index().active_tip() &&
+              pruned_restart.index().active_tip()->id ==
+                  block_id(stronger.header),
+              "header-only history and active chain recover after restart");
+        const auto next = make_block(
+            3U, block_id(stronger.header), 281U, 5U);
+        check(pruned_restart.append(next, block_work(next)) ==
+                  BlockStoreError::none &&
+              pruned_restart.body_availability(block_id(next.header)) ==
+                  BlockBodyAvailability::retained,
+              "version-3 store appends new full bodies");
+
         {
             std::ofstream stale(temporary, std::ios::binary | std::ios::trunc);
             stale << "incomplete replacement";
         }
         PersistentBlockStore ignores_stale(limits, 1U << 20U);
         check(ignores_stale.open(path) == BlockStoreError::none &&
-              ignores_stale.blocks().size() == 4U,
+              ignores_stale.blocks().size() == 5U,
               "stale temporary snapshot ignored after restart");
 
         const auto complete_size = std::filesystem::file_size(path);
@@ -100,7 +145,7 @@ int main() {
         }
         PersistentBlockStore recovers_tail(limits, 1U << 20U);
         check(recovers_tail.open(path) == BlockStoreError::none &&
-              recovers_tail.blocks().size() == 4U &&
+              recovers_tail.blocks().size() == 5U &&
               std::filesystem::file_size(path) == complete_size,
               "incomplete append tail truncated during recovery");
 

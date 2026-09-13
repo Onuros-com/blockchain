@@ -41,6 +41,29 @@ struct BlockContext {
 };
 
 template <typename PowVerifier>
+BlockValidationError validate_block_header(const BlockHeader& header,
+                                           const BlockValidationLimits& limits,
+                                           const BlockContext& context,
+                                           PowVerifier verify_pow) {
+    if (header.version != limits.block_version)
+        return BlockValidationError::unsupported_block_version;
+    if (header.height != context.expected_height)
+        return BlockValidationError::invalid_height;
+    if (header.previous != context.expected_parent)
+        return BlockValidationError::invalid_parent;
+    if (header.timestamp <= context.median_time_past)
+        return BlockValidationError::timestamp_not_after_median;
+    if (header.timestamp > context.adjusted_time &&
+        header.timestamp - context.adjusted_time > context.max_future_seconds)
+        return BlockValidationError::timestamp_too_far_in_future;
+    if (header.compact_target != context.expected_compact_target)
+        return BlockValidationError::unexpected_target;
+    if (!verify_pow(header))
+        return BlockValidationError::invalid_proof_of_work;
+    return BlockValidationError::none;
+}
+
+template <typename PowVerifier>
 BlockValidationError validate_block(const Block& block,
                                     const BlockValidationLimits& limits,
                                     const BlockContext& context,
@@ -65,20 +88,7 @@ BlockValidationError validate_block(const Block& block,
     }
     if (!has_valid_transaction_root(block))
         return BlockValidationError::invalid_transaction_root;
-    if (block.header.height != context.expected_height)
-        return BlockValidationError::invalid_height;
-    if (block.header.previous != context.expected_parent)
-        return BlockValidationError::invalid_parent;
-    if (block.header.timestamp <= context.median_time_past)
-        return BlockValidationError::timestamp_not_after_median;
-    if (block.header.timestamp > context.adjusted_time &&
-        block.header.timestamp - context.adjusted_time > context.max_future_seconds)
-        return BlockValidationError::timestamp_too_far_in_future;
-    if (block.header.compact_target != context.expected_compact_target)
-        return BlockValidationError::unexpected_target;
-    if (!verify_pow(block.header))
-        return BlockValidationError::invalid_proof_of_work;
-    return BlockValidationError::none;
+    return validate_block_header(block.header, limits, context, verify_pow);
 }
 
 } // namespace onuros

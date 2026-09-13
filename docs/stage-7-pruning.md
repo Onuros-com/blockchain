@@ -1,8 +1,7 @@
 # Stage 7 conditional pruning
 
-Pruning is disabled by default. This checkpoint defines the chain-bound safety
-horizon that must exist before historical block bodies can be compacted. It
-does not delete block data.
+Pruning is disabled by default. A caller must construct and validate a
+chain-bound checkpoint before requesting compaction.
 
 ## Retention rule
 
@@ -44,17 +43,34 @@ These checks prevent a stale or copied checkpoint from authorizing deletion on
 another chain state. They provide corruption detection and chain binding, not
 authority from a trusted signer.
 
-## Activation sequence
+## Durable block-store compaction
 
-Historical body compaction remains blocked until the next checkpoint provides:
+The version-3 block store records one explicit body-presence byte per block.
+A retained record contains the canonical full block. A compacted record
+contains the canonical 160-byte header and its validated per-block work. The
+in-memory API reports a missing historical body as `archive_required`, which
+is distinct from an unknown block.
 
-1. a versioned block-store representation that distinguishes retained bodies
-   from header-only history;
-2. atomic rewrite and restart recovery;
-3. shielded undo retention covering the same reorganization window;
-4. archive-node fallback for bodies older than the local window;
-5. archive/pruned convergence, restart and permitted-reorganization tests;
-6. retained-disk measurements and corrupt-metadata failure tests.
+Compaction builds and parses the complete replacement in memory before an
+fsync-and-rename operation. A restart ignores an abandoned temporary file and
+reconstructs the header/work index from the durable destination. New blocks
+are appended with full bodies. The legacy version-2 full-block format remains
+readable and is upgraded only by an explicit compaction call.
+
+On restart, retained blocks receive full transaction-root and body validation.
+Header-only records receive header, difficulty and proof-of-work validation.
+Their transaction-root commitment is preserved, but the missing body cannot be
+revalidated locally and must be obtained from an archive node when requested.
+
+## Remaining activation sequence
+
+Node-level pruning activation remains blocked until the next checkpoints
+provide:
+
+1. shielded undo retention covering the same reorganization window;
+2. a network archive-body retrieval path for `archive_required` results;
+3. archive/pruned convergence and permitted-reorganization tests;
+4. retained-disk measurements on a representative chain.
 
 If any checkpoint validation fails, the node opens without pruning authority
 and must not remove historical data.
