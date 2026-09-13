@@ -3,6 +3,7 @@
 #include "onuros/block_format.hpp"
 #include "onuros/chain_index.hpp"
 #include "onuros/difficulty.hpp"
+#include "onuros/pruning.hpp"
 
 #include <algorithm>
 #include <array>
@@ -44,7 +45,10 @@ enum class BlockStoreError {
 struct StoredBlock {
     Block block;
     ChainWork work;
+    bool body_retained = true;
 };
+
+enum class BlockBodyAvailability { retained, archive_required, unknown };
 
 inline ChainWork chain_work_from_target_work(const Target256& work) {
     ChainWork result;
@@ -168,10 +172,14 @@ inline bool append_synced(const std::filesystem::path& destination,
 } // namespace detail
 
 class PersistentBlockStore {
-    static constexpr std::array<std::uint8_t, 8> magic_ =
+    static constexpr std::array<std::uint8_t, 8> magic_v2_ =
         {'O', 'N', 'U', 'R', 'D', 'B', '0', '2'};
-    static constexpr std::size_t minimum_record_payload_ =
+    static constexpr std::array<std::uint8_t, 8> magic_v3_ =
+        {'O', 'N', 'U', 'R', 'D', 'B', '0', '3'};
+    static constexpr std::size_t minimum_v2_record_payload_ =
         4U + block_prefix_encoded_size + 32U;
+    static constexpr std::size_t minimum_v3_record_payload_ =
+        1U + 4U + block_header_encoded_size + 32U;
 
     std::filesystem::path path_;
     DecodeLimits decode_limits_;
@@ -180,11 +188,17 @@ class PersistentBlockStore {
     std::vector<StoredBlock> blocks_;
     std::unordered_map<Hash256, std::size_t, Hash256Hasher> positions_;
     ChainIndex index_;
+    bool version_three_ = false;
 
-    static std::vector<std::uint8_t> serialize_record(const StoredBlock& stored) {
-        const auto encoded = encode_block(stored.block);
+    static std::vector<std::uint8_t> serialize_record(
+            const StoredBlock& stored, bool version_three) {
+        const auto encoded = stored.body_retained
+            ? encode_block(stored.block)
+            : encode_block_header(stored.block.header);
         std::vector<std::uint8_t> payload;
-        payload.reserve(4U + encoded.size() + 32U);
+        payload.reserve((version_three ? 1U : 0U) + 4U + encoded.size() + 32U);
+        if (version_three)
+            payload.push_back(stored.body_retained ? 1U : 0U);
         detail::append_u32(payload, static_cast<std::uint32_t>(encoded.size()));
         payload.insert(payload.end(), encoded.begin(), encoded.end());
         for (const auto limb : stored.work.limbs) detail::append_u64(payload, limb);
@@ -201,11 +215,17 @@ class PersistentBlockStore {
     BlockStoreError parse(const std::vector<std::uint8_t>& bytes,
                           std::vector<StoredBlock>& parsed_blocks,
                           ChainIndex& parsed_index,
-                          std::size_t& valid_size) const {
-        if (bytes.size() < magic_.size() ||
-            !std::equal(magic_.begin(), magic_.end(), bytes.begin()))
+                          std::size_t& valid_size,
+                          bool& version_three) const {
+        if (bytes.size() < magic_v2_.size())
             return BlockStoreError::corrupt_database;
-        std::size_t offset = magic_.size();
+        if (std::equal(magic_v3_.begin(), magic_v3_.end(), bytes.begin()))
+            version_three = true;
+        else if (std::equal(magic_v2_.begin(), magic_v2_.end(), bytes.begin()))
+            version_three = false;
+        else
+            return BlockStoreError::corrupt_database;
+        std::size_t offset = magic_v2_.size();
         valid_size = offset;
         while (offset < bytes.size()) {
             const auto record_start = offset;
@@ -213,8 +233,11 @@ class PersistentBlockStore {
             if (!detail::take_u32(bytes, offset, payload_size)) break;
             const auto max_block_bytes =
                 effective_block_limit(decode_limits_.max_block_bytes);
-            if (payload_size < minimum_record_payload_ ||
-                payload_size > max_block_bytes + 36U)
+            const auto minimum_payload = version_three
+                ? minimum_v3_record_payload_ : minimum_v2_record_payload_;
+            const auto framing = version_three ? 37U : 36U;
+            if (payload_size < minimum_payload ||
+                payload_size > max_block_bytes + framing)
                 return BlockStoreError::corrupt_database;
             if (offset > bytes.size() || payload_size > bytes.size() - offset ||
                 bytes.size() - offset - payload_size < 32U)
@@ -228,6 +251,12 @@ class PersistentBlockStore {
                             bytes.begin() + static_cast<std::ptrdiff_t>(payload_end)))
                 return BlockStoreError::corrupt_database;
 
+            bool body_retained = true;
+            if (version_three) {
+                if (offset == payload_end || bytes[offset] > 1U)
+                    return BlockStoreError::corrupt_database;
+                body_retained = bytes[offset++] == 1U;
+            }
             std::uint32_t encoded_size = 0U;
             if (!detail::take_u32(bytes, offset, encoded_size) ||
                 encoded_size > max_block_bytes ||
@@ -237,8 +266,19 @@ class PersistentBlockStore {
                 bytes.begin() + static_cast<std::ptrdiff_t>(offset),
                 bytes.begin() + static_cast<std::ptrdiff_t>(offset + encoded_size));
             offset += encoded_size;
-            auto block = decode_block(encoded, decode_limits_);
-            if (!block) return BlockStoreError::invalid_block_encoding;
+            Block block;
+            if (body_retained) {
+                auto decoded = decode_block(encoded, decode_limits_);
+                if (!decoded) return BlockStoreError::invalid_block_encoding;
+                block = std::move(*decoded);
+            } else {
+                if (encoded.size() != block_header_encoded_size)
+                    return BlockStoreError::invalid_block_encoding;
+                detail::ByteReader reader(encoded);
+                if (!detail::read_block_header(reader, block.header) ||
+                    !reader.exhausted())
+                    return BlockStoreError::invalid_block_encoding;
+            }
             ChainWork work;
             for (auto& limb : work.limbs) {
                 if (!detail::take_u64(bytes, offset, limb))
@@ -247,23 +287,23 @@ class PersistentBlockStore {
             if (offset != payload_end) return BlockStoreError::corrupt_database;
             offset += 32U;
 
-            const auto target = decode_compact_target(block->header.compact_target);
-            if (!target || !is_canonical_compact_target(block->header.compact_target) ||
+            const auto target = decode_compact_target(block.header.compact_target);
+            if (!target || !is_canonical_compact_target(block.header.compact_target) ||
                 !(work == chain_work_from_target_work(work_for_target(*target))))
                 return BlockStoreError::invalid_chain;
-            const auto id = block_id(block->header);
+            const auto id = block_id(block.header);
             ChainIndexResult result;
-            if (block->header.height == 0U) {
-                if (!parsed_blocks.empty() || block->header.previous != Hash256{})
+            if (block.header.height == 0U) {
+                if (!parsed_blocks.empty() || block.header.previous != Hash256{})
                     return BlockStoreError::invalid_chain;
-                result = parsed_index.add_genesis(id, work, block->header.timestamp);
+                result = parsed_index.add_genesis(id, work, block.header.timestamp);
             } else {
-                result = parsed_index.add_block(id, block->header.previous,
-                    block->header.height, work, block->header.timestamp);
+                result = parsed_index.add_block(id, block.header.previous,
+                    block.header.height, work, block.header.timestamp);
             }
             if (result.error != ChainIndexError::none)
                 return BlockStoreError::invalid_chain;
-            parsed_blocks.push_back({std::move(*block), work});
+            parsed_blocks.push_back({std::move(block), work, body_retained});
             valid_size = offset;
         }
         return BlockStoreError::none;
@@ -278,7 +318,8 @@ public:
         std::error_code error;
         if (!std::filesystem::exists(path, error)) {
             if (error) return BlockStoreError::io_error;
-            const std::vector<std::uint8_t> header(magic_.begin(), magic_.end());
+            const std::vector<std::uint8_t> header(
+                magic_v2_.begin(), magic_v2_.end());
             if (header.size() > max_database_bytes_)
                 return BlockStoreError::database_too_large;
             if (!detail::create_atomic(path, header)) return BlockStoreError::io_error;
@@ -299,7 +340,9 @@ public:
         std::vector<StoredBlock> parsed_blocks;
         ChainIndex parsed_index;
         std::size_t valid_size = 0U;
-        const auto result = parse(bytes, parsed_blocks, parsed_index, valid_size);
+        bool parsed_version_three = false;
+        const auto result = parse(bytes, parsed_blocks, parsed_index, valid_size,
+                                  parsed_version_three);
         if (result != BlockStoreError::none) return result;
         if (valid_size != bytes.size()) {
             std::filesystem::resize_file(path, valid_size, error);
@@ -313,6 +356,7 @@ public:
         for (std::size_t i = 0; i < blocks_.size(); ++i)
             positions_.emplace(block_id(blocks_[i].block.header), i);
         index_ = std::move(parsed_index);
+        version_three_ = parsed_version_three;
         return BlockStoreError::none;
     }
 
@@ -338,7 +382,7 @@ public:
             : index_.check_block(id, block.header.previous, block.header.height, work);
         if (check != ChainIndexError::none)
             return BlockStoreError::invalid_chain;
-        const auto record = serialize_record({block, work});
+        const auto record = serialize_record({block, work, true}, version_three_);
         if (record.size() > max_database_bytes_ ||
             durable_size_ > max_database_bytes_ - record.size())
             return BlockStoreError::database_too_large;
@@ -350,7 +394,7 @@ public:
         if (result.error != ChainIndexError::none)
             return BlockStoreError::invalid_chain;
         durable_size_ += record.size();
-        blocks_.push_back({block, work});
+        blocks_.push_back({block, work, true});
         positions_.emplace(id, blocks_.size() - 1U);
         if (index_result != nullptr) *index_result = std::move(result);
         return BlockStoreError::none;
@@ -359,6 +403,62 @@ public:
     const StoredBlock* find(const Hash256& id) const {
         const auto position = positions_.find(id);
         return position == positions_.end() ? nullptr : &blocks_[position->second];
+    }
+
+    BlockBodyAvailability body_availability(const Hash256& id) const {
+        const auto* stored = find(id);
+        if (stored == nullptr) return BlockBodyAvailability::unknown;
+        return stored->body_retained ? BlockBodyAvailability::retained
+                                    : BlockBodyAvailability::archive_required;
+    }
+
+    BlockStoreError compact(const PruningPolicy& policy,
+                            const PruningCheckpoint& checkpoint) {
+        if (path_.empty() || blocks_.empty()) return BlockStoreError::io_error;
+        const auto* active_tip = index_.active_tip();
+        if (active_tip == nullptr) return BlockStoreError::invalid_chain;
+        const auto genesis = block_id(blocks_.front().block.header);
+        const auto tip = find(active_tip->id);
+        if (tip == nullptr ||
+            validate_pruning_checkpoint(checkpoint, policy, genesis,
+                *active_tip, tip->block.header.shielded_root) !=
+                    PruningCheckpointError::none)
+            return BlockStoreError::invalid_chain;
+
+        std::vector<StoredBlock> compacted = blocks_;
+        std::vector<std::uint8_t> bytes(magic_v3_.begin(), magic_v3_.end());
+        for (auto& stored : compacted) {
+            if (checkpoint.body_may_be_pruned(stored.block.header.height)) {
+                stored.block.transactions.clear();
+                stored.body_retained = false;
+            }
+            const auto record = serialize_record(stored, true);
+            if (record.size() > max_database_bytes_ ||
+                bytes.size() > max_database_bytes_ - record.size())
+                return BlockStoreError::database_too_large;
+            bytes.insert(bytes.end(), record.begin(), record.end());
+        }
+
+        std::vector<StoredBlock> verified_blocks;
+        ChainIndex verified_index;
+        std::size_t verified_size = 0U;
+        bool verified_v3 = false;
+        const auto verified = parse(bytes, verified_blocks, verified_index,
+                                     verified_size, verified_v3);
+        if (verified != BlockStoreError::none || !verified_v3 ||
+            verified_size != bytes.size())
+            return BlockStoreError::corrupt_database;
+        if (!detail::create_atomic(path_, bytes)) return BlockStoreError::io_error;
+
+        durable_size_ = bytes.size();
+        blocks_ = std::move(verified_blocks);
+        positions_.clear();
+        positions_.reserve(blocks_.size());
+        for (std::size_t i = 0U; i < blocks_.size(); ++i)
+            positions_.emplace(block_id(blocks_[i].block.header), i);
+        index_ = std::move(verified_index);
+        version_three_ = true;
+        return BlockStoreError::none;
     }
 
     const std::vector<StoredBlock>& blocks() const { return blocks_; }

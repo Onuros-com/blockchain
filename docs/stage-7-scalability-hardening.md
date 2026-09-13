@@ -54,7 +54,8 @@ reorganization.
 
 The disabled-by-default horizon and chain-bound metadata format are specified
 in [Stage 7 conditional pruning](stage-7-pruning.md). Body deletion remains
-blocked until the storage and recovery checkpoints listed there are complete.
+disabled at node level until the recovery checkpoints listed there are
+complete.
 
 Exit evidence:
 

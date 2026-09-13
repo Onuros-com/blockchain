@@ -115,6 +115,17 @@ int main() {
               node.active_state().undo_log.size() == 1U,
               "stronger fork reorganizes atomically with undo");
 
+        const PruningPolicy pruning_policy{true, 1U, 1U};
+        const auto checkpoint = make_pruning_checkpoint(
+            pruning_policy, block_id(genesis->header),
+            *node.store().index().active_tip(), fork_two.header.shielded_root);
+        check(checkpoint.accepted() &&
+              node.compact_history(pruning_policy, *checkpoint.checkpoint).error ==
+                  LocalNodeError::none &&
+              node.store().body_availability(block_id(main->header)) ==
+                  BlockBodyAvailability::archive_required,
+              "validated local node compacts finalized bodies");
+
         LocalNode restarted(parameters, test_pow);
         check(restarted.open(path).error == LocalNodeError::none,
               "local node restarts from durable database");

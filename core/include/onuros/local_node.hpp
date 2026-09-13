@@ -107,13 +107,19 @@ class LocalNode {
             }
             context.adjusted_time = std::numeric_limits<std::uint64_t>::max();
             context.max_future_seconds = parameters_.max_future_seconds;
-            if (validate_block(block, parameters_.validation_limits, context,
-                    [this](const BlockHeader& header) {
-                        const auto hash = pow_hash_(header);
-                        return hash && hash_meets_compact_target(*hash,
-                            header.compact_target,
-                            parameters_.difficulty.proof_of_work_limit);
-                    }) != BlockValidationError::none)
+            const auto verify_pow = [this](const BlockHeader& header) {
+                const auto hash = pow_hash_(header);
+                return hash && hash_meets_compact_target(*hash,
+                    header.compact_target,
+                    parameters_.difficulty.proof_of_work_limit);
+            };
+            const auto validation = stored.body_retained
+                ? validate_block(block, parameters_.validation_limits,
+                                 context, verify_pow)
+                : validate_block_header(block.header,
+                                        parameters_.validation_limits,
+                                        context, verify_pow);
+            if (validation != BlockValidationError::none)
                 return false;
             const auto target_work = work_for_compact_target(
                 block.header.compact_target,
@@ -245,6 +251,17 @@ public:
             ++candidate.header.nonce;
         }
         return {LocalNodeError::nonce_space_exhausted};
+    }
+
+    LocalNodeResult compact_history(
+            const PruningPolicy& policy,
+            const PruningCheckpoint& checkpoint) {
+        if (!open_) return {LocalNodeError::not_open};
+        const auto error = store_.compact(policy, checkpoint);
+        if (error != BlockStoreError::none)
+            return {LocalNodeError::database_error,
+                    BlockValidationError::none, error};
+        return {};
     }
 
     const PersistentBlockStore& store() const { return store_; }
