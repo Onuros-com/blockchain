@@ -1,4 +1,5 @@
 #include "onuros/private_transaction.hpp"
+#include "onuros/compact_private_effect.hpp"
 
 #include <cstddef>
 #include <iostream>
@@ -56,6 +57,24 @@ int main() {
               << "zero_vector_pair_commitment="
               << onuros::hash_hex(
                      onuros::private_effect_authorization_commitment(vector))
+              << '\n';
+    constexpr std::size_t transfers = 6'000U;
+    const auto compact_effect = onuros::compact_private_effect_encoded_size(2U);
+    const auto compact_framed =
+        compact_effect + onuros::compact_private_effect_length_size;
+    onuros::CompactPrivateEffects compact_vector;
+    compact_vector.actions.resize(2U);
+    std::cout << "compact_effect_version="
+              << onuros::compact_private_effect_version << '\n'
+              << "compact_note_ciphertext_bytes="
+              << onuros::compact_note_ciphertext_size << '\n'
+              << "compact_two_action_effect_bytes=" << compact_effect << '\n'
+              << "compact_two_action_framed_bytes=" << compact_framed << '\n'
+              << "compact_6000_effect_bytes="
+              << compact_framed * transfers << '\n'
+              << "zero_vector_compact_effect_digest="
+              << onuros::hash_hex(
+                     onuros::compact_private_effect_digest(compact_vector))
               << '\n';
     return 0;
 }
