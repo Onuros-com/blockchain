@@ -26,6 +26,84 @@ inline constexpr std::size_t orchard_encrypted_note_size = 580U;
 inline constexpr std::size_t orchard_outgoing_ciphertext_size = 80U;
 inline constexpr std::size_t orchard_proof_base_size = 2720U;
 inline constexpr std::size_t orchard_proof_per_action_size = 2272U;
+inline constexpr std::size_t private_bundle_magic_size = 4U;
+inline constexpr std::size_t private_bundle_format_version_size = 4U;
+inline constexpr std::size_t private_proof_system_version_size = 4U;
+inline constexpr std::size_t private_bundle_flags_size = 1U;
+inline constexpr std::size_t private_anchor_size = 32U;
+inline constexpr std::size_t private_value_balance_size = 8U;
+inline constexpr std::size_t private_fee_size = 8U;
+inline constexpr std::size_t private_action_count_size = 4U;
+inline constexpr std::size_t private_bundle_fixed_header_size =
+    private_bundle_magic_size + private_bundle_format_version_size +
+    private_proof_system_version_size + private_bundle_flags_size +
+    private_anchor_size + private_value_balance_size + private_fee_size +
+    private_action_count_size;
+inline constexpr std::size_t private_action_core_size = 160U;
+inline constexpr std::size_t private_action_signature_size = 64U;
+inline constexpr std::size_t private_action_encoded_size =
+    private_action_core_size + orchard_encrypted_note_size +
+    orchard_outgoing_ciphertext_size + private_action_signature_size;
+inline constexpr std::size_t private_proof_length_size = 4U;
+inline constexpr std::size_t private_binding_signature_size = 64U;
+inline constexpr std::size_t transaction_envelope_overhead_size = 8U;
+inline constexpr std::size_t transaction_batch_count_size = 4U;
+
+struct PrivateTransactionByteLayout {
+    std::size_t bundle_magic = private_bundle_magic_size;
+    std::size_t format_version = private_bundle_format_version_size;
+    std::size_t proof_system_version = private_proof_system_version_size;
+    std::size_t flags = private_bundle_flags_size;
+    std::size_t anchor = private_anchor_size;
+    std::size_t value_balance = private_value_balance_size;
+    std::size_t fee = private_fee_size;
+    std::size_t action_count = private_action_count_size;
+    std::size_t fixed_header = private_bundle_fixed_header_size;
+    std::size_t action_core = 0U;
+    std::size_t encrypted_notes = 0U;
+    std::size_t outgoing_ciphertexts = 0U;
+    std::size_t spend_authorizations = 0U;
+    std::size_t proof_length = private_proof_length_size;
+    std::size_t proof = 0U;
+    std::size_t binding_signature = private_binding_signature_size;
+    std::size_t body = 0U;
+    std::size_t transaction_envelope = 0U;
+    std::size_t single_transaction_batch = 0U;
+};
+
+inline PrivateTransactionByteLayout private_transaction_byte_layout(
+        std::size_t action_count) {
+    if (action_count == 0U)
+        throw std::invalid_argument("private byte layout requires an action");
+    constexpr auto per_action = private_action_encoded_size +
+                                orchard_proof_per_action_size;
+    constexpr auto fixed = private_bundle_fixed_header_size +
+                           private_proof_length_size +
+                           orchard_proof_base_size +
+                           private_binding_signature_size;
+    constexpr auto outer = transaction_envelope_overhead_size +
+                           transaction_batch_count_size;
+    if (action_count >
+        (std::numeric_limits<std::size_t>::max() - fixed - outer) /
+            per_action)
+        throw std::length_error("private byte layout exceeds size_t");
+
+    PrivateTransactionByteLayout layout;
+    layout.action_core = private_action_core_size * action_count;
+    layout.encrypted_notes = orchard_encrypted_note_size * action_count;
+    layout.outgoing_ciphertexts =
+        orchard_outgoing_ciphertext_size * action_count;
+    layout.spend_authorizations =
+        private_action_signature_size * action_count;
+    layout.proof = orchard_proof_base_size +
+                   orchard_proof_per_action_size * action_count;
+    layout.body = fixed + per_action * action_count;
+    layout.transaction_envelope =
+        transaction_envelope_overhead_size + layout.body;
+    layout.single_transaction_batch =
+        transaction_batch_count_size + layout.transaction_envelope;
+    return layout;
+}
 
 struct PrivateBundleLimits {
     std::size_t max_body_bytes;
@@ -200,7 +278,9 @@ inline std::vector<std::uint8_t> encode_private_bundle(
                                           bundle.actions.size())
         throw std::invalid_argument("non-canonical Orchard proof size");
 
+    const auto layout = private_transaction_byte_layout(bundle.actions.size());
     std::vector<std::uint8_t> output;
+    output.reserve(layout.body);
     output.insert(output.end(), private_detail::bundle_magic.begin(),
                   private_detail::bundle_magic.end());
     private_detail::append_little(output, bundle.format_version);
@@ -225,6 +305,8 @@ inline std::vector<std::uint8_t> encode_private_bundle(
     }
     private_detail::append_sized(output, bundle.proof);
     private_detail::append_array(output, bundle.binding_signature);
+    if (output.size() != layout.body)
+        throw std::logic_error("private byte layout mismatch");
     return output;
 }
 
@@ -241,10 +323,8 @@ inline Hash256 private_signature_digest(
         const PrivateTransactionBundle& bundle) {
     auto encoded = encode_private_bundle(bundle);
     constexpr std::size_t fixed_prefix_size =
-        4U + 4U + 4U + 1U + 32U + 8U + 8U + 4U;
-    constexpr std::size_t action_size =
-        160U + orchard_encrypted_note_size +
-        orchard_outgoing_ciphertext_size + 64U;
+        private_bundle_fixed_header_size;
+    constexpr std::size_t action_size = private_action_encoded_size;
     constexpr std::size_t signature_offset_in_action =
         action_size - 64U;
     for (std::size_t i = 0; i < bundle.actions.size(); ++i) {
@@ -322,9 +402,7 @@ inline PrivateBundleDecodeResult decode_private_transaction(
     if (action_count == 0U) return {Error::zero_actions, std::nullopt};
     if (action_count > limits.max_actions)
         return {Error::too_many_actions, std::nullopt};
-    constexpr std::size_t minimum_action_bytes =
-        160U + orchard_encrypted_note_size +
-        orchard_outgoing_ciphertext_size + 64U;
+    constexpr std::size_t minimum_action_bytes = private_action_encoded_size;
     if (action_count > reader.remaining() / minimum_action_bytes)
         return {Error::truncated, std::nullopt};
 
