@@ -132,6 +132,8 @@ replace Stage 7 network Gates 6 or 7.
   near-limit reconstruction/validation regression.
 - `docs/stage-7-performance-qualification.md`: physical Gate 6 and Gate 7
   evidence contract.
+- `docs/stage-7-physical-completion-checklist.md`: consolidated physical-gate
+  status, evidence safety boundary and final acceptance sequence.
 
 ## Evidence still required
 
