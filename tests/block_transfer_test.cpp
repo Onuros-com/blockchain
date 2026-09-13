@@ -103,6 +103,71 @@ int main() {
         check(!make_block_transaction_chunks(block, {6U}, 85U),
               "out-of-range transaction request rejected");
 
+        const ArchiveBlockRequest archive_request{block_id(block.header)};
+        const auto encoded_archive_request =
+            encode_archive_block_request(archive_request);
+        const auto decoded_archive_request =
+            decode_archive_block_request(encoded_archive_request);
+        check(decoded_archive_request &&
+                  decoded_archive_request->block_identifier ==
+                      archive_request.block_identifier,
+              "archive request canonical round trip");
+        auto trailing_request = encoded_archive_request;
+        trailing_request.push_back(0U);
+        check(!decode_archive_block_request(trailing_request),
+              "archive request rejects trailing data");
+
+        const auto archive_chunks = make_archive_block_chunks(block, 220U);
+        check(archive_chunks && archive_chunks->size() > 1U,
+              "archive response uses bounded chunks");
+        ArchiveBlockLimits archive_limits;
+        archive_limits.maximum_chunk_bytes = 220U;
+        archive_limits.maximum_total_chunks = 16U;
+        archive_limits.maximum_block_bytes = 4096U;
+        ArchiveBlockAssembler archive_assembler(
+            block.header, {4096U, 16U, 64U}, archive_limits);
+        ArchiveBlockAssemblyResult archive_result;
+        for (const auto& chunk : *archive_chunks) {
+            const auto encoded_chunk = encode_archive_block_chunk(chunk);
+            const auto decoded_chunk = decode_archive_block_chunk(
+                encoded_chunk, archive_limits);
+            check(decoded_chunk.has_value(),
+                  "archive chunk canonical bounded round trip");
+            archive_result = archive_assembler.add(*decoded_chunk);
+            check(archive_result.error == ArchiveBlockAssemblyError::none,
+                  "ordered archive chunk accepted");
+        }
+        check(archive_result.block &&
+                  encode_block(*archive_result.block) == encode_block(block),
+              "archive chunks reconstruct exact committed block");
+
+        ArchiveBlockAssembler archive_out_of_order(
+            block.header, {4096U, 16U, 64U}, archive_limits);
+        check(archive_out_of_order.add((*archive_chunks)[1]).error ==
+                  ArchiveBlockAssemblyError::out_of_order,
+              "out-of-order archive chunk rejected");
+        auto changed_manifest = (*archive_chunks)[0];
+        ++changed_manifest.total_block_bytes;
+        ArchiveBlockAssembler archive_manifest(
+            block.header, {4096U, 16U, 64U}, archive_limits);
+        check(archive_manifest.add(changed_manifest).error ==
+                  ArchiveBlockAssemblyError::none,
+              "first archive manifest initializes bounded assembly");
+        changed_manifest = (*archive_chunks)[1];
+        check(archive_manifest.add(changed_manifest).error ==
+                  ArchiveBlockAssemblyError::inconsistent_manifest,
+              "inconsistent archive manifest rejected");
+
+        auto corrupt_chunks = *archive_chunks;
+        corrupt_chunks.back().bytes.back() ^= 1U;
+        ArchiveBlockAssembler corrupt_archive(
+            block.header, {4096U, 16U, 64U}, archive_limits);
+        ArchiveBlockAssemblyResult corrupt_result;
+        for (const auto& chunk : corrupt_chunks)
+            corrupt_result = corrupt_archive.add(chunk);
+        check(corrupt_result.error == ArchiveBlockAssemblyError::invalid_block,
+              "archive body not matching committed transaction root rejected");
+
         std::cout << checks << " block-transfer checks passed\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

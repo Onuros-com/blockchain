@@ -68,7 +68,7 @@ Node-level pruning activation remains blocked until the next checkpoints
 provide:
 
 1. ~~shielded undo retention covering the same reorganization window;~~
-2. a network archive-body retrieval path for `archive_required` results;
+2. ~~a network archive-body retrieval path for `archive_required` results;~~
 3. archive/pruned convergence and permitted-reorganization tests;
 4. retained-disk measurements on a representative chain.
 
@@ -90,3 +90,17 @@ Reducing the window is an atomic checksummed replacement. Increasing it is
 rejected because discarded undo data cannot be reconstructed from the pruned
 state. Restart preserves the limit and boundary, and every subsequent connect
 enforces the limit before persistence.
+
+## Archive body retrieval
+
+Archive-capable peers advertise `p2p_service_archive_node`. A pruned node sends
+`get_archive_block` with the required committed block identifier. The archive
+returns the canonical block in ordered `archive_block` chunks. Each chunk binds
+the block identifier, sequence, total chunk count and total encoded size; all
+counts and bytes are bounded before allocation.
+
+The receiver accepts chunks only in order and reconstructs the complete block
+under the 16 MiB consensus ceiling. It then requires the exact locally stored
+header and transaction-root commitment before atomically replacing the
+header-only database record. Wrong blocks, inconsistent manifests, excessive
+sizes, reordered chunks, malformed encodings and altered bodies fail closed.

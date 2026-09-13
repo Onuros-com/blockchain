@@ -61,7 +61,8 @@ int main() {
         hello.chain_id = value(1U);
         hello.genesis_hash = value(2U);
         hello.services = p2p_service_full_node | p2p_service_compact_relay |
-                         p2p_service_authenticated_transport;
+                         p2p_service_authenticated_transport |
+                         p2p_service_archive_node;
         hello.node_nonce = 99U;
         hello.best_height = 123U;
         hello.cumulative_work = value(3U);
