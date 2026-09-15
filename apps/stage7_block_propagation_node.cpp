@@ -1003,20 +1003,6 @@ void run_restart(const Options& options) {
               << " tip=" << hash_hex(tip->id) << std::endl;
 }
 
-void usage(const char* program) {
-    std::cerr << "Usage: " << program
-              << " --role sender|receiver|restart --port PORT --cert FILE --key FILE"
-                 " --ca FILE --expected-peer DNS --manifest FILE --node-id ID"
-                 " --corpus FILE --parameters FILE --parameters-sha256 HEX"
-                 " --corpus-sha256 HEX"
-                 " --initial-commitments FILE"
-                 " --initial-commitments-sha256 HEX"
-                 " --blockchain-commit SHA --privacy-lab-commit SHA [options]\n"
-              << "  sender: --bind ADDRESS --data-dir DIR [--overlap 50]\n"
-              << "  receiver: --address HOST --data-dir DIR"
-                 " --receiver-id ID [--workers 4]\n"
-              << "  restart: --data-dir DIR (no socket is opened)\n";
-}
 } // namespace
 
 int main(int argc, char** argv) {
