@@ -188,6 +188,28 @@ int main() {
                                            1U << 20U, 100U);
     check(wrong_genesis.open(path) == ShieldedStoreError::wrong_genesis);
 
+    const auto seeded_path = std::filesystem::temp_directory_path() /
+                             "onuros-shielded-seeded-test.db";
+    std::filesystem::remove(seeded_path, ignored);
+    const std::vector<Hash256> initial_commitments{value(70U), value(71U)};
+    {
+        PersistentShieldedState seeded(
+            genesis, genesis_root, initial_commitments, 1U << 20U, 100U);
+        check(seeded.open(seeded_path) == ShieldedStoreError::none);
+        check(seeded.state().commitment_count() == 2U &&
+              seeded.state().ordered_commitments() == initial_commitments);
+    }
+    {
+        PersistentShieldedState seeded_restart(
+            genesis, genesis_root, initial_commitments, 1U << 20U, 100U);
+        check(seeded_restart.open(seeded_path) == ShieldedStoreError::none);
+        PersistentShieldedState wrong_seed(
+            genesis, genesis_root, {value(72U)}, 1U << 20U, 100U);
+        check(wrong_seed.open(seeded_path) ==
+              ShieldedStoreError::wrong_genesis);
+    }
+    std::filesystem::remove(seeded_path, ignored);
+
     auto corrupted = stable_bytes;
     corrupted[20U] ^= 1U;
     {

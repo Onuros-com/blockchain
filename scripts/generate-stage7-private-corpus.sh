@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "archived Orchard/Halo2 corpus generator: use the pinned Privacy Lab corpus" >&2
+exit 64
+
 if (( $# < 1 || $# > 3 )); then
   echo "usage: $0 OUTPUT [TRANSACTIONS=66000] [WORKERS=nproc]" >&2
   exit 2

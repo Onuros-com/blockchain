@@ -23,10 +23,39 @@ verification_tasks=66000
 verification_workers=8
 verification_pool_starts=1
 verification_seconds=550.000000
+admission_latency_sample=batch
+admission_latency_percentile=nearest-rank
+admission_latency_p50_ms=10.000000
+admission_latency_p95_ms=20.000000
+admission_latency_p99_ms=25.000000
+admission_latency_max_ms=30.000000
+application_bytes_sent=1000
+application_bytes_received=2000
 admitted_tps=110.000000
 divergent_transactions=0
 limits_exceeded=0
-verification_backend=orchard-ffi
+payment_bytes=584
+proof_system=groth16-bls12-381
+commitment_hash=poseidon
+verification_backend=onuros-privacy-engine-abi-v1
+tracked_witness_backend=onuros-privacy-engine-abi-v2
+qualification_profile=groth16-poseidon-payment-relay-v1
+active_privacy_protocol_qualified=true
+genesis_sync_qualified=false
+network_id=1
+circuit_version=1
+root_height=100
+genesis=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+candidate_root=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+parameters_sha256=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+corpus_sha256=abababababababababababababababababababababababababababababababab
+initial_commitments_sha256=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd
+tls_ca_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+blockchain_commit=1111111111111111111111111111111111111111
+privacy_lab_commit=2222222222222222222222222222222222222222
+node_id=$node
+loopback=false
+transport_authenticated=true
 process_exit_status=0
 private_payloads_logged=false
 id_set_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -35,6 +64,26 @@ EOF
 done
 bash "$validator" relay "$work/a.relay" "$work/b.relay" "$work/c.relay" |
   grep -q '^stage7_unique_relay_gate=PASS '
+
+sed -i -e 's/66000/65999/g' \
+  -e 's/admitted_tps=110.000000/admitted_tps=109.998333/' "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted fewer than 66,000 unique payments" >&2
+  exit 1
+fi
+sed -i -e 's/65999/66000/g' \
+  -e 's/admitted_tps=109.998333/admitted_tps=110.000000/' "$work/c.relay"
+
+sed -i 's/^admission_latency_p99_ms=25.000000$/admission_latency_p99_ms=31.000000/' \
+  "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted non-monotonic latency percentiles" >&2
+  exit 1
+fi
+sed -i 's/^admission_latency_p99_ms=31.000000$/admission_latency_p99_ms=25.000000/' \
+  "$work/c.relay"
 
 sed -i 's/^queue_high_watermark=32$/queue_high_watermark=0/' "$work/c.relay"
 if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
@@ -76,29 +125,83 @@ for receiver in a b; do
   cat >"$work/$receiver.block" <<EOF
 role=receiver
 receiver_id=$receiver
-block_bytes=16612467
-transactions=1811
+node_id=$receiver
+block_bytes=3552300
+transactions=6001
 mempool_overlap_percent=50
-mempool_overlap_transactions=905
+mempool_overlap_transactions=3000
 announcement_bytes=58168
 request_bytes=3728
 response_bytes=8300000
+durable_state_bytes=12000000
+file_sync_calls=8
+directory_sync_calls=3
 propagation_validation_seconds=29.999
 block_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 limits_exceeded=0
 validation=PASS
 durable_activation=PASS
+late_catch_up=PASS
 restart_recovery=PASS
-verification_backend=orchard-ffi
+offline_restart=PENDING_SEPARATE_PROCESS
+payment_bytes=584
+proof_system=groth16-bls12-381
+commitment_hash=poseidon
+tracked_witness_backend=onuros-privacy-engine-abi-v2
+qualification_profile=groth16-poseidon-genesis-sync-v1
+active_privacy_protocol_qualified=true
+genesis_sync_qualified=true
+loopback=false
+transport_authenticated=true
+genesis=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+candidate_root=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+terminal_note_root=9999999999999999999999999999999999999999999999999999999999999999
+parameters_sha256=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+corpus_sha256=abababababababababababababababababababababababababababababababab
+initial_commitments_sha256=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd
+tls_ca_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+blockchain_commit=1111111111111111111111111111111111111111
+privacy_lab_commit=2222222222222222222222222222222222222222
+network_id=1
+circuit_version=1
+root_height=100
+verification_backend=onuros-privacy-engine-abi-v1
 process_exit_status=0
 private_payloads_logged=false
 EOF
 done
-bash "$validator" block "$work/a.block" "$work/b.block" |
-  grep -q '^stage7_block_propagation_gate=PASS '
+for receiver in a b; do
+  cat >"$work/$receiver.restart" <<EOF
+role=restart
+node_id=$receiver
+offline_restart=PASS
+network_attempted=false
+process_exit_status=0
+durable_state_bytes=12000000
+file_sync_calls=0
+directory_sync_calls=0
+tip=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+genesis=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+candidate_root=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+terminal_note_root=9999999999999999999999999999999999999999999999999999999999999999
+parameters_sha256=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+corpus_sha256=abababababababababababababababababababababababababababababababab
+initial_commitments_sha256=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd
+tls_ca_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+blockchain_commit=1111111111111111111111111111111111111111
+privacy_lab_commit=2222222222222222222222222222222222222222
+network_id=1
+circuit_version=1
+root_height=100
+EOF
+done
+bash "$validator" block "$work/a.block" "$work/b.block" \
+  "$work/a.restart" "$work/b.restart" |
+  grep -q '^stage7_candidate_sync_gate=PASS '
 
 sed -i 's/^receiver_id=b$/receiver_id=a/' "$work/b.block"
 if bash "$validator" block "$work/a.block" "$work/b.block" \
+    "$work/a.restart" "$work/b.restart" \
     >/dev/null 2>&1; then
   echo "validator accepted repeated block receiver" >&2
   exit 1
@@ -106,7 +209,8 @@ fi
 sed -i 's/^receiver_id=a$/receiver_id=b/' "$work/b.block"
 
 sed -i 's/29.999/30.001/' "$work/b.block"
-if bash "$validator" block "$work/a.block" "$work/b.block" >/dev/null 2>&1; then
+if bash "$validator" block "$work/a.block" "$work/b.block" \
+    "$work/a.restart" "$work/b.restart" >/dev/null 2>&1; then
   echo "validator accepted excess block latency" >&2
   exit 1
 fi

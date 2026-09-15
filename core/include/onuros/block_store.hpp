@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -61,6 +62,19 @@ inline ChainWork chain_work_from_target_work(const Target256& work) {
 
 namespace detail {
 
+struct DurabilitySyncSnapshot {
+    std::uint64_t file_sync_calls = 0U;
+    std::uint64_t directory_sync_calls = 0U;
+};
+
+inline std::atomic<std::uint64_t> file_sync_calls{0U};
+inline std::atomic<std::uint64_t> directory_sync_calls{0U};
+
+inline DurabilitySyncSnapshot durability_sync_snapshot() noexcept {
+    return {file_sync_calls.load(std::memory_order_relaxed),
+            directory_sync_calls.load(std::memory_order_relaxed)};
+}
+
 inline void append_u32(std::vector<std::uint8_t>& output, std::uint32_t value) {
     append_little_endian(output, value);
 }
@@ -90,6 +104,7 @@ inline bool take_u64(const std::vector<std::uint8_t>& input, std::size_t& offset
 }
 
 inline bool sync_file(const std::filesystem::path& path) {
+    file_sync_calls.fetch_add(1U, std::memory_order_relaxed);
 #ifdef _WIN32
     const auto handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE,
         FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
@@ -113,6 +128,7 @@ inline bool sync_parent_directory(const std::filesystem::path& path) {
     (void)path;
     return true;
 #else
+    directory_sync_calls.fetch_add(1U, std::memory_order_relaxed);
     auto parent = path.parent_path();
     if (parent.empty()) parent = ".";
     const auto name = parent.string();

@@ -24,8 +24,8 @@ struct BlockHeader {
     Height height = 0;
     Hash256 previous{};
     Hash256 transactions_root{};
-    // Stage 6 consensus commitment to the active Orchard note tree after
-    // applying this block. This is part of the block id and PoW preimage.
+    // Consensus commitment to the active Poseidon note tree after applying
+    // this block. This is part of the block id and PoW preimage.
     Hash256 shielded_root{};
     std::uint64_t timestamp = 0;
     std::uint32_t compact_target = 0;

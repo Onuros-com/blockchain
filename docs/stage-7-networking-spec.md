@@ -1,5 +1,8 @@
 # Stage 7 specification: P2P networking and multi-node synchronization
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 Status: protocol engine, nonblocking TCP primitives, live loopback relay,
 three-process synchronization and private-transaction relay, live headers-first
 validation, single-owner

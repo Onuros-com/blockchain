@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "archived Orchard/Halo2 benchmark: use the Privacy Engine qualification runbook" >&2
+exit 64
+
 workers="${1:-$(nproc)}"
 iterations="${2:-100}"
 case "$workers:$iterations" in

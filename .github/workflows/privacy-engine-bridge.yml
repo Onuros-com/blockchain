@@ -1,0 +1,61 @@
+name: Privacy Engine Rust bridge
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/stage7_block_propagation_node.cpp"
+      - "apps/stage7_private_load_node.cpp"
+      - "core/include/onuros/onuros_poseidon_root.hpp"
+      - "core/include/onuros/onuros_privacy_engine_backend.hpp"
+      - "core/include/onuros/onuros_privacy_engine_v1.h"
+      - "core/include/onuros/onuros_tracked_witness_backend.hpp"
+      - "core/include/onuros/onuros_tracked_witness_v2.h"
+      - "core/include/onuros/privacy_engine_network.hpp"
+      - "tests/onuros_privacy_engine_backend_test.cpp"
+      - "tests/onuros_tracked_witness_v2_test.cpp"
+      - "CMakeLists.txt"
+      - ".github/workflows/privacy-engine-bridge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rust-bridge:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out Blockchain
+        uses: actions/checkout@v4
+        with:
+          path: blockchain
+          persist-credentials: false
+      - name: Check out pinned Privacy Lab candidate
+        uses: actions/checkout@v4
+        with:
+          repository: Onuros-com/Onuros-privacy-lab
+          ref: 9badc816a9f702636b597b603d9927f2079e1877
+          path: privacy-lab
+          token: ${{ secrets.ONUROS_PRIVACY_LAB_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - name: Test Privacy Engine ABI
+        run: cargo test --release --locked --manifest-path privacy-lab/prototypes/privacy-engine-ffi/Cargo.toml
+      - name: Build Privacy Engine ABI
+        run: cargo build --release --locked --manifest-path privacy-lab/prototypes/privacy-engine-ffi/Cargo.toml --lib
+      - name: Link candidate C++ boundary
+        run: |
+          cmake -S blockchain -B build-candidate \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DONUROS_PRIVACY_ENGINE_LIBRARY="$PWD/privacy-lab/prototypes/privacy-engine-ffi/target/release/libonuros_privacy_engine_ffi.so"
+          cmake --build build-candidate --parallel 2 --target \
+            onuros_stage7_private_load_node \
+            onuros_stage7_candidate_sync_node \
+            onuros_privacy_engine_backend_test \
+            onuros_tracked_witness_v2_test
+          ctest --test-dir build-candidate --output-on-failure \
+            -R 'onuros_privacy_engine_backend|onuros_tracked_witness_v2'
+      - name: Record pinned identities
+        run: |
+          printf 'blockchain_commit=%s\n' "$GITHUB_SHA"
+          printf 'privacy_lab_commit=%s\n' '9badc816a9f702636b597b603d9927f2079e1877'
+          sha256sum privacy-lab/prototypes/privacy-engine-ffi/Cargo.lock

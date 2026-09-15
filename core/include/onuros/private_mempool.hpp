@@ -89,8 +89,12 @@ public:
             return {PrivateMempoolError::verification_failed, effects.error};
         if (effects.nullifiers.empty() || effects.commitments.empty())
             return {PrivateMempoolError::empty_effects};
-        if (effects.nullifiers.size() != effects.commitments.size() ||
-            effects.nullifiers.size() > limits_.max_actions_per_transaction)
+        // A private-payment protocol is not required to have one output per
+        // spend. Onuros Shielded Payment v1 has one nullifier and two output
+        // commitments. Bound both effect sets independently; equality was an
+        // Orchard-specific assumption and rejected valid 584-byte payments.
+        if (effects.nullifiers.size() > limits_.max_actions_per_transaction ||
+            effects.commitments.size() > limits_.max_actions_per_transaction)
             return {PrivateMempoolError::too_many_actions};
         if (!state.has_anchor(effects.anchor))
             return {PrivateMempoolError::unknown_anchor};
@@ -112,7 +116,8 @@ public:
                 !candidate_commitments.insert(commitment).second)
                 return {PrivateMempoolError::conflicting_commitment};
         }
-        const auto actions = effects.nullifiers.size();
+        const auto actions = std::max(effects.nullifiers.size(),
+                                      effects.commitments.size());
         if (entries_.size() >= limits_.max_transactions ||
             encoded_bytes > limits_.max_total_bytes -
                 std::min(limits_.max_total_bytes, total_bytes_) ||

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "archived Orchard/Halo2 corpus sharding: use the pinned Privacy Lab corpus" >&2
+exit 64
+
 usage() {
   echo "usage:" >&2
   echo "  $0 generate OUTPUT TRANSACTIONS SHARDS FIRST_SHARD END_SHARD" >&2

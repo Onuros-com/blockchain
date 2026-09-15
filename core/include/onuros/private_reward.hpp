@@ -1,6 +1,6 @@
 #pragma once
 
-#include "onuros/private_transaction.hpp"
+#include "onuros/private_admission.hpp"
 #include "onuros/reward_policy.hpp"
 
 #include <array>
@@ -16,6 +16,9 @@ namespace onuros {
 inline constexpr std::array<std::uint8_t, 4> private_reward_magic{
     'O', 'N', 'R', '1'};
 inline constexpr std::uint32_t private_reward_format_version = 1U;
+// The fresh Groth16/Poseidon testnet uses one envelope version for reward and
+// ordinary private-payment records. Version 2 remains historical Orchard data.
+inline constexpr std::uint32_t private_reward_envelope_version = 3U;
 
 struct PrivateRewardClaim {
     EcosystemReward amounts{};
@@ -69,14 +72,14 @@ inline std::vector<std::uint8_t> encode_private_reward(
 
 inline TransactionEnvelope make_private_reward_transaction(
         const PrivateRewardClaim& claim) {
-    return {private_transaction_envelope_version,
+    return {private_reward_envelope_version,
             encode_private_reward(claim)};
 }
 
 inline PrivateRewardResult decode_private_reward(
         const TransactionEnvelope& transaction) {
     constexpr std::size_t encoded_size = 4U + 4U + 24U + 96U;
-    if (transaction.version != private_transaction_envelope_version ||
+    if (transaction.version != private_reward_envelope_version ||
         transaction.body.size() != encoded_size)
         return {PrivateRewardError::malformed, std::nullopt};
     detail::ByteReader reader(transaction.body);

@@ -1,5 +1,8 @@
 # Stage 7 compact private effects prototype
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 This non-activated prototype measures the byte floor for private state changes
 when transaction authorization is supplied by a future reviewed block proof.
 It does not define a spendable transaction, bypass Orchard verification, or

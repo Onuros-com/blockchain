@@ -12,7 +12,7 @@ on:
       - "Makefile"
       - "scripts/*kawpow*.sh"
       - "scripts/run-stage7-*.sh"
-      - "crypto/orchard-ffi/**"
+      - "core/include/onuros/onuros_privacy_*.h*"
       - "third_party/ravencoin-kawpow/**"
       - ".github/workflows/core.yml"
 
@@ -45,25 +45,3 @@ jobs:
         run: cmake --build build --parallel 2
       - name: Test sanitizers
         run: ctest --test-dir build --output-on-failure
-
-  orchard-network-admission:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - name: Select pinned Rust toolchain
-        run: |
-          rustup toolchain install 1.88.0 --profile minimal --no-self-update
-          rustup default 1.88.0
-      - name: Build pinned Orchard FFI
-        run: cargo build --locked --release --manifest-path crypto/orchard-ffi/Cargo.toml
-      - name: Configure with Orchard FFI
-        run: >
-          cmake -S . -B build-orchard -DCMAKE_BUILD_TYPE=Release
-          -DONUROS_ORCHARD_FFI_LIBRARY=${{ github.workspace }}/crypto/orchard-ffi/target/release/libonuros_orchard_ffi.so
-      - name: Build Orchard network admission
-        run: cmake --build build-orchard --parallel 2
-      - name: Test real Orchard pipeline and network boundary
-        run: >
-          ctest --test-dir build-orchard --output-on-failure
-          -R "private_node_orchard_pipeline|stage7_orchard_network"

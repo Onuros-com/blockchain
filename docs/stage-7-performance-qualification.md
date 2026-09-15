@@ -1,5 +1,8 @@
 # Stage 7 performance qualification
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 ## Measurement rules
 
 Stage 7 reports three different rates. They are not interchangeable.
@@ -19,18 +22,18 @@ growth, relay, or settlement.
 ### Topology
 
 Run three published nodes on independent machines in at least two network
-locations. Use the production Orchard admission composition and mutually
-authenticated TLS. Each node must use an isolated database and its own
-certificate identity.
+locations. Use the candidate-linked Groth16/Poseidon Privacy Engine admission
+composition and mutually authenticated TLS. Each node must use an isolated
+database and its own certificate identity.
 
 ### Workload
 
-Submit at least 100 distinct, valid private transactions per second for 600
-continuous seconds. The minimum accepted workload is therefore 60,000
-transactions. Every transaction must have a distinct canonical transaction ID
-and must pass the pinned Orchard verifier. Replaying one fixture, modifying
-bytes after proof creation, or substituting the deterministic test verifier
-invalidates the run.
+Submit 110 distinct, valid 584-byte private payments per second for at least
+600 continuous seconds. The minimum accepted workload is therefore 66,000
+payments. Every payment must have a distinct canonical transaction ID and must
+pass the pinned Privacy Engine Groth16 verifier. Replaying one fixture,
+modifying bytes after proof creation, or substituting the deterministic test
+verifier invalidates the run.
 
 Generate proofs before the timed interval unless proof construction is
 explicitly part of the measured client workload. Record which choice was used.
@@ -55,6 +58,14 @@ verification_tasks=
 verification_workers=
 verification_pool_starts=
 verification_seconds=
+admission_latency_sample=batch
+admission_latency_percentile=nearest-rank
+admission_latency_p50_ms=
+admission_latency_p95_ms=
+admission_latency_p99_ms=
+admission_latency_max_ms=
+application_bytes_sent=
+application_bytes_received=
 admitted_tps=
 divergent_transactions=
 ```
@@ -65,13 +76,18 @@ queue high-watermark must be non-zero, must not exceed `queue_limit`, and is
 measured from work actually submitted to the verifier pool; a constant or
 placeholder value is not evidence.
 
-The sender additionally records request latency percentiles and rejected
-submissions. Observers record the first and last accepted transaction IDs as
-hashes only.
+Every node records local batch-admission wall-clock latency. Percentiles use
+the nearest-rank rule over one sample per received payment batch; they are not
+per-payment or end-to-end confirmation latencies. Application byte counters
+cover complete encoded P2P frames before TLS overhead. Interface counters in
+the host resource record separately disclose operating-system network bytes.
+Rejected submissions are reported by the admission counters. Observers record
+the first and last accepted transaction IDs as hashes only.
 
 ### Pass conditions
 
 - measured duration is at least 600 seconds;
+- every node admits and relays at least 66,000 unique payments;
 - sender admission rate is at least 100.000 unique valid transactions/s;
 - all three nodes contain the same admitted transaction-ID set;
 - `divergent_transactions=0`;
@@ -105,6 +121,12 @@ Announce the block from one published node to two independent peers with the
 same TLS and source restrictions used by Gate 6. Both receivers start with the
 documented mempool overlap. Measure from receipt of the first valid block
 announcement to durable activation after full validation.
+
+Receiver manifests also report the logical bytes occupied by the block,
+shielded-state and commit-journal files, plus exact file and parent-directory
+synchronization-call counts from the application durability boundary. These
+counts do not estimate operating-system cache-flush latency or physical-media
+write amplification; host resource records disclose those separately.
 
 The initial private-testnet budget is 30.000 seconds at both receivers. Report
 the raw values and p50/p95 only when multiple blocks are tested. Confirmation

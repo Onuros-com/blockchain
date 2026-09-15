@@ -219,6 +219,7 @@ class PersistentShieldedState {
     std::size_t max_entries_;
     Hash256 expected_genesis_{};
     Hash256 expected_root_{};
+    std::vector<Hash256> expected_initial_commitments_;
     ShieldedState state_;
     bool open_ = false;
 
@@ -242,6 +243,15 @@ public:
         : max_bytes_(max_bytes), max_entries_(max_entries),
           expected_genesis_(genesis), expected_root_(initial_root),
           state_(genesis, initial_root) {}
+
+    PersistentShieldedState(Hash256 genesis, Hash256 initial_root,
+                            std::vector<Hash256> initial_commitments,
+                            std::size_t max_bytes,
+                            std::size_t max_entries)
+        : max_bytes_(max_bytes), max_entries_(max_entries),
+          expected_genesis_(genesis), expected_root_(initial_root),
+          expected_initial_commitments_(initial_commitments),
+          state_(genesis, initial_root, std::move(initial_commitments)) {}
 
     ShieldedStoreError open(const std::filesystem::path& path) {
         path_ = path;
@@ -269,6 +279,13 @@ public:
         if (!snapshot) return ShieldedStoreError::corrupt_database;
         if (snapshot->genesis_block != expected_genesis_ ||
             snapshot->genesis_root != expected_root_)
+            return ShieldedStoreError::wrong_genesis;
+        if (!expected_initial_commitments_.empty() &&
+            (snapshot->ordered_commitments.size() <
+                 expected_initial_commitments_.size() ||
+             !std::equal(expected_initial_commitments_.begin(),
+                         expected_initial_commitments_.end(),
+                         snapshot->ordered_commitments.begin())))
             return ShieldedStoreError::wrong_genesis;
         auto restored = ShieldedState::restore(*snapshot);
         if (!restored) return ShieldedStoreError::corrupt_database;

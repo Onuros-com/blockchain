@@ -60,6 +60,10 @@ for directory in "${directories[@]}"; do
   [[ "$(field "$directory/node-manifest.txt" synchronization)" == PASS ]]
   [[ "$(field "$directory/node-manifest.txt" process_exit_status)" == 0 ]]
   [[ "$(field "$directory/node-manifest.txt" private_payloads_logged)" == false ]]
+  [[ "$(field "$directory/node-manifest.txt" qualification_profile)" == \
+     transport-fixture-v1 ]]
+  [[ "$(field "$directory/node-manifest.txt" active_privacy_protocol_qualified)" == \
+     false ]]
 done
 
 server="${directories[0]}/node-manifest.txt"
@@ -87,10 +91,15 @@ restart_id="$(field "$restart" node_id)"
 
 tip="$(field "$server" tip)"
 height="$(field "$server" height)"
-[[ "$tip" =~ ^[0-9a-f]{64}$ && "$height" =~ ^[1-9][0-9]*$ ]]
+genesis="$(field "$server" genesis)"
+shielded_root="$(field "$server" shielded_root)"
+[[ "$tip" =~ ^[0-9a-f]{64}$ && "$genesis" =~ ^[0-9a-f]{64}$ && \
+   "$shielded_root" =~ ^[0-9a-f]{64}$ && "$height" =~ ^[1-9][0-9]*$ ]]
 for manifest in "$initial" "$late" "$restart"; do
   [[ "$(field "$manifest" tip)" == "$tip" ]]
   [[ "$(field "$manifest" height)" == "$height" ]]
+  [[ "$(field "$manifest" genesis)" == "$genesis" ]]
+  [[ "$(field "$manifest" shielded_root)" == "$shielded_root" ]]
 done
 
 commit="$(field "${directories[0]}/host-manifest.txt" commit)"
@@ -101,4 +110,4 @@ for directory in "${directories[@]:1}"; do
   [[ "$(field "$directory/host-manifest.txt" ca_certificate_sha256)" == "$ca_hash" ]]
 done
 
-echo "stage7_published_sync_gate=PASS nodes=3 height=$height tip=$tip"
+echo "stage7_published_transport_sync_gate=PASS nodes=3 height=$height tip=$tip shielded_root=$shielded_root"

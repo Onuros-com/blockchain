@@ -1,5 +1,8 @@
 # Stage 7 private transaction byte accounting
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 This report describes canonical format version 2. It does not authorize a
 format change or remove any Orchard field.
 

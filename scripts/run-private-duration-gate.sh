@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "archived Orchard/Halo2 duration gate: not valid for the active protocol" >&2
+exit 64
+
 workers="${1:-4}"
 seconds="${2:-600}"
 minimum_tps="${3:-100}"

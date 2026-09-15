@@ -1,5 +1,8 @@
 # Stage 7 network threat model
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 ## Scope
 
 This document covers the Stage 7 peer transport, framing, transaction and block
