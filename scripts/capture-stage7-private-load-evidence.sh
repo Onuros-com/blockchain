@@ -17,13 +17,22 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 case "$role" in origin|relay|observer) ;; *) echo "invalid role" >&2; exit 2 ;; esac
 for file in "$node_manifest" "$node_log" "$binary" "$certificate" "$ca_certificate"; do
-  [[ -f "$file" ]] || { echo "missing evidence input: $file" >&2; exit 1; }
+  [[ -f "$file" && ! -L "$file" ]] || {
+    echo "missing regular evidence input: $file" >&2
+    exit 1
+  }
 done
 grep -q "^role=$role$" "$node_manifest"
 grep -q "^stage7_private_load=PASS role=$role " "$node_log"
 ! grep -aE 'BEGIN .*PRIVATE KEY' "$node_manifest" "$node_log" \
   "$certificate" "$ca_certificate" >/dev/null
+! grep -aEi '(^|[^[:alnum:]_])(mnemonic|secret_seed|wallet_seed|spending_key|payment_plaintext|rseed)[[:space:]]*[:=]' \
+  "$node_manifest" "$node_log" >/dev/null
 
+if [[ -e "$output" && -n "$(find "$output" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+  echo "refusing to replace non-empty evidence directory: $output" >&2
+  exit 1
+fi
 mkdir -p "$output"
 cp "$node_manifest" "$output/node-manifest.txt"
 cp "$node_log" "$output/node.log"
