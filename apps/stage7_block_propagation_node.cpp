@@ -29,6 +29,8 @@ using Clock = std::chrono::steady_clock;
 
 constexpr std::array<std::uint8_t, 8> corpus_magic{
     'O', 'N', 'U', 'R', 'C', 'R', 'P', '1'};
+constexpr std::array<std::uint8_t, 8> initial_commitments_magic{
+    'O', 'N', 'U', 'R', 'I', 'N', 'I', '1'};
 constexpr std::uint32_t corpus_version = 1U;
 constexpr std::array<std::uint8_t, 4> control_magic{'B', 'L', 'K', '1'};
 constexpr std::size_t maximum_io_attempts = 3'600'000U;
@@ -284,7 +286,8 @@ struct BuiltBlock {
 BuiltBlock build_block(const std::filesystem::path& corpus_path,
                        std::size_t workers,
                        const onuros_privacy_engine_v1* engine,
-                       std::uint32_t max_root_age) {
+                       std::uint32_t max_root_age,
+                       const std::vector<Hash256>& initial_commitments) {
     CorpusReader corpus(corpus_path);
     if (corpus.count() < 6'000U)
         throw std::runtime_error("candidate sync corpus requires 6000 entries");
@@ -299,7 +302,8 @@ BuiltBlock build_block(const std::filesystem::path& corpus_path,
         encoded_bytes += transaction_bytes;
         private_transactions.push_back(*transaction);
     }
-    ShieldedState state(block_id(genesis.header), anchor);
+    ShieldedState state(block_id(genesis.header), anchor,
+                        initial_commitments);
     onuros_accepted_root_v1 accepted{};
     accepted.height = corpus.root_height();
     std::copy(anchor.begin(), anchor.end(), std::begin(accepted.root));
@@ -311,7 +315,8 @@ BuiltBlock build_block(const std::filesystem::path& corpus_path,
     if (!admission.accepted())
         throw std::runtime_error("sender Privacy Engine block preparation failed");
     auto roots = OnurosPoseidonRootCalculator::linked();
-    const auto root = roots.calculate({}, admission.prepared->commitments());
+    const auto root = roots.calculate(initial_commitments,
+                                      admission.prepared->commitments());
     if (!root) throw std::runtime_error("sender Poseidon root failed");
     OnurosRewardPolicy economics;
     const auto amounts = economics.allocate(1U, admission.prepared->fees(), 0);
@@ -384,6 +389,8 @@ struct Options {
     std::string expected_peer;
     std::filesystem::path corpus;
     Hash256 corpus_sha256{};
+    std::filesystem::path initial_commitments;
+    Hash256 initial_commitments_sha256{};
     std::filesystem::path parameters;
     Hash256 parameter_sha256{};
     std::uint32_t max_root_age = 100U;
@@ -453,6 +460,10 @@ Options parse_options(int argc, char** argv) {
     options.corpus = argument(argc, argv, "--corpus");
     options.corpus_sha256 = hex_hash(
         argument(argc, argv, "--corpus-sha256"), "corpus-sha256");
+    options.initial_commitments = argument(argc, argv, "--initial-commitments");
+    options.initial_commitments_sha256 = hex_hash(
+        argument(argc, argv, "--initial-commitments-sha256"),
+        "initial-commitments-sha256");
     options.parameters = argument(argc, argv, "--parameters");
     options.parameter_sha256 = hex_hash(
         argument(argc, argv, "--parameters-sha256"), "parameters-sha256");
@@ -469,7 +480,8 @@ Options parse_options(int argc, char** argv) {
     options.workers = static_cast<std::size_t>(
         number_argument(argc, argv, "--workers", options.workers));
     if (options.role.empty() || options.ca.empty() || options.manifest.empty() ||
-        options.parameters.empty() || options.max_root_age == 0U ||
+        options.parameters.empty() || options.initial_commitments.empty() ||
+        options.max_root_age == 0U ||
         options.node_id.empty() ||
         options.overlap > 100U || options.workers == 0U ||
         options.workers > 256U)
@@ -496,6 +508,47 @@ Hash256 file_sha256(const std::filesystem::path& path) {
         (std::istreambuf_iterator<char>(input)),
         std::istreambuf_iterator<char>());
     return sha256(bytes);
+}
+
+std::vector<Hash256> read_initial_commitments(
+        const Options& options, const CorpusReader& corpus) {
+    if (file_sha256(options.initial_commitments) !=
+            options.initial_commitments_sha256)
+        throw std::runtime_error("initial commitment snapshot SHA-256 mismatch");
+    std::ifstream input(options.initial_commitments, std::ios::binary);
+    if (!input) throw std::runtime_error("initial commitment snapshot open failed");
+    const auto read_u32 = [&input]() {
+        std::array<std::uint8_t, 4> bytes{};
+        input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+        if (!input) throw std::runtime_error("truncated initial commitment header");
+        return static_cast<std::uint32_t>(bytes[0]) |
+            (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+            (static_cast<std::uint32_t>(bytes[2]) << 16U) |
+            (static_cast<std::uint32_t>(bytes[3]) << 24U);
+    };
+    std::array<std::uint8_t, 8> magic{};
+    input.read(reinterpret_cast<char*>(magic.data()), magic.size());
+    const auto version = read_u32();
+    const auto count = read_u32();
+    const auto network_id = read_u32();
+    const auto circuit_version = read_u32();
+    Hash256 root{};
+    input.read(reinterpret_cast<char*>(root.data()), root.size());
+    if (!input || magic != initial_commitments_magic || version != 1U ||
+        count == 0U || count > 100'000U ||
+        network_id != corpus.network_id() ||
+        circuit_version != corpus.circuit_version() || root != corpus.anchor())
+        throw std::runtime_error("initial commitment identity mismatch");
+    std::vector<Hash256> commitments(count);
+    for (auto& commitment : commitments)
+        input.read(reinterpret_cast<char*>(commitment.data()), commitment.size());
+    if (!input || input.peek() != std::ifstream::traits_type::eof())
+        throw std::runtime_error("invalid initial commitment snapshot length");
+    auto roots = OnurosPoseidonRootCalculator::linked();
+    const auto recomputed = roots.calculate({}, commitments);
+    if (!recomputed || *recomputed != corpus.anchor())
+        throw std::runtime_error("initial commitments do not produce candidate root");
+    return commitments;
 }
 
 using EnginePtr = std::unique_ptr<onuros_privacy_engine_v1,
@@ -543,8 +596,10 @@ void run_sender(const Options& options) {
         throw std::runtime_error("sender corpus/data directory is required");
     const CorpusReader metadata(options.corpus);
     const auto engine = open_engine(options, metadata);
+    const auto initial_commitments = read_initial_commitments(options, metadata);
     const auto built = build_block(options.corpus, options.workers,
-                                   engine.get(), options.max_root_age);
+                                   engine.get(), options.max_root_age,
+                                   initial_commitments);
     std::filesystem::create_directories(options.data_dir);
     const auto parameters = node_parameters();
     onuros_accepted_root_v1 accepted{};
@@ -566,8 +621,8 @@ void run_sender(const Options& options) {
         producer.submit(built.genesis, genesis_time).error != LocalNodeError::none)
         throw std::runtime_error("producer genesis activation failed");
     PersistentShieldedState shielded(
-        block_id(built.genesis.header), built.anchor,
-        64U * 1024U * 1024U, 16'384U);
+        block_id(built.genesis.header), built.anchor, initial_commitments,
+        64U * 1024U * 1024U, 100'000U);
     if (shielded.open(shielded_path) != ShieldedStoreError::none)
         throw std::runtime_error("producer shielded state open failed");
     PrivateNodeCommitCoordinator coordinator(
@@ -654,6 +709,8 @@ void run_sender(const Options& options) {
              << "root_height=" << built.root_height << '\n'
              << "parameters_sha256=" << hash_hex(options.parameter_sha256) << '\n'
              << "corpus_sha256=" << hash_hex(options.corpus_sha256) << '\n'
+             << "initial_commitments_sha256="
+             << hash_hex(options.initial_commitments_sha256) << '\n'
              << "tls_ca_sha256=" << hash_hex(file_sha256(options.ca)) << '\n'
              << "blockchain_commit=" << options.blockchain_commit << '\n'
              << "privacy_lab_commit=" << options.privacy_lab_commit << '\n'
@@ -678,11 +735,13 @@ struct ReceiverResult {
 ReceiverResult receive_block(FramedTls& sender, const Options& options,
                              const CorpusReader& corpus,
                              const onuros_privacy_engine_v1* engine,
+                             const std::vector<Hash256>& initial_commitments,
                              const Hash256& anchor, std::uint32_t overlap) {
     if (anchor != corpus.anchor())
         throw std::runtime_error("sender candidate root differs from local corpus");
     const auto genesis = make_genesis(anchor);
-    ShieldedState admission_state(block_id(genesis.header), anchor);
+    ShieldedState admission_state(block_id(genesis.header), anchor,
+                                  initial_commitments);
     onuros_accepted_root_v1 accepted{};
     accepted.height = corpus.root_height();
     std::copy(anchor.begin(), anchor.end(), std::begin(accepted.root));
@@ -773,7 +832,8 @@ ReceiverResult receive_block(FramedTls& sender, const Options& options,
             node.submit(genesis, genesis_time).error != LocalNodeError::none)
             throw std::runtime_error("receiver genesis activation failed");
         PersistentShieldedState shielded(
-            block_id(genesis.header), anchor, 64U * 1024U * 1024U, 16'384U);
+            block_id(genesis.header), anchor, initial_commitments,
+            64U * 1024U * 1024U, 100'000U);
         if (shielded.open(shielded_path) != ShieldedStoreError::none)
             throw std::runtime_error("receiver shielded state open failed");
         PrivateNodeCommitCoordinator coordinator(
@@ -791,13 +851,15 @@ ReceiverResult receive_block(FramedTls& sender, const Options& options,
             restarted.active_state().tip() != block_id(block.header))
             throw std::runtime_error("receiver block restart recovery failed");
         PersistentShieldedState shielded(
-            block_id(genesis.header), anchor, 64U * 1024U * 1024U, 16'384U);
+            block_id(genesis.header), anchor, initial_commitments,
+            64U * 1024U * 1024U, 100'000U);
         if (shielded.open(shielded_path) != ShieldedStoreError::none ||
             shielded.state().tip() != block_id(block.header) ||
             shielded.state().root() != block.header.shielded_root ||
             shielded.state().spent_count() != block.transactions.size() - 1U ||
             shielded.state().commitment_count() !=
-                2U * (block.transactions.size() - 1U))
+                initial_commitments.size() +
+                    2U * (block.transactions.size() - 1U))
             throw std::runtime_error("receiver shielded restart recovery failed");
     }
     const auto elapsed = std::chrono::duration<double>(
@@ -818,6 +880,7 @@ void run_receiver(const Options& options) {
         throw std::runtime_error("receiver connection/data options missing");
     const CorpusReader corpus(options.corpus);
     const auto engine = open_engine(options, corpus);
+    const auto initial_commitments = read_initial_commitments(options, corpus);
     auto context = TlsContext::mutual(options.certificate.string(),
         options.private_key.string(), options.ca.string());
     if (!context) throw std::runtime_error("receiver TLS material failed");
@@ -831,7 +894,7 @@ void run_receiver(const Options& options) {
         throw std::runtime_error("receiver expected block control");
     const auto [anchor, overlap] = decode_control(control_frame.payload);
     const auto result = receive_block(sender, options, corpus, engine.get(),
-                                      anchor, overlap);
+                                      initial_commitments, anchor, overlap);
     sender.send({stage7_protocol_version, P2pMessageType::pong, 3U,
         std::vector<std::uint8_t>(result.block_identifier.begin(),
                                   result.block_identifier.end())});
@@ -865,6 +928,8 @@ void run_receiver(const Options& options) {
              << "root_height=" << corpus.root_height() << '\n'
              << "parameters_sha256=" << hash_hex(options.parameter_sha256) << '\n'
              << "corpus_sha256=" << hash_hex(options.corpus_sha256) << '\n'
+             << "initial_commitments_sha256="
+             << hash_hex(options.initial_commitments_sha256) << '\n'
              << "tls_ca_sha256=" << hash_hex(file_sha256(options.ca)) << '\n'
              << "blockchain_commit=" << options.blockchain_commit << '\n'
              << "privacy_lab_commit=" << options.privacy_lab_commit << '\n'
@@ -890,6 +955,7 @@ void run_restart(const Options& options) {
     const CorpusReader corpus(options.corpus);
     if (file_sha256(options.corpus) != options.corpus_sha256)
         throw std::runtime_error("Privacy Lab corpus SHA-256 mismatch");
+    const auto initial_commitments = read_initial_commitments(options, corpus);
     const auto genesis = make_genesis(corpus.anchor());
     const auto parameters = node_parameters();
     const auto blocks = options.data_dir / "blocks.db";
@@ -900,8 +966,8 @@ void run_restart(const Options& options) {
     if (node.open(blocks).error != LocalNodeError::none)
         throw std::runtime_error("offline block restart failed");
     PersistentShieldedState shielded(
-        block_id(genesis.header), corpus.anchor(), 64U * 1024U * 1024U,
-        16'384U);
+        block_id(genesis.header), corpus.anchor(), initial_commitments,
+        64U * 1024U * 1024U, 100'000U);
     if (shielded.open(shielded_path) != ShieldedStoreError::none)
         throw std::runtime_error("offline shielded restart failed");
     const auto* tip = node.store().index().active_tip();
@@ -922,6 +988,8 @@ void run_restart(const Options& options) {
              << "root_height=" << corpus.root_height() << '\n'
              << "parameters_sha256=" << hash_hex(options.parameter_sha256) << '\n'
              << "corpus_sha256=" << hash_hex(options.corpus_sha256) << '\n'
+             << "initial_commitments_sha256="
+             << hash_hex(options.initial_commitments_sha256) << '\n'
              << "tls_ca_sha256=" << hash_hex(file_sha256(options.ca)) << '\n'
              << "blockchain_commit=" << options.blockchain_commit << '\n'
              << "privacy_lab_commit=" << options.privacy_lab_commit << '\n'
@@ -940,6 +1008,8 @@ void usage(const char* program) {
                  " --ca FILE --expected-peer DNS --manifest FILE --node-id ID"
                  " --corpus FILE --parameters FILE --parameters-sha256 HEX"
                  " --corpus-sha256 HEX"
+                 " --initial-commitments FILE"
+                 " --initial-commitments-sha256 HEX"
                  " --blockchain-commit SHA --privacy-lab-commit SHA [options]\n"
               << "  sender: --bind ADDRESS --data-dir DIR [--overlap 50]\n"
               << "  receiver: --address HOST --data-dir DIR"

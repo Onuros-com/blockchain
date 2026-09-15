@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Onuros-com/Onuros-privacy-lab
-          ref: a93bc51f2d60e60ac436c8a87ee5b3f01ed11ded
+          ref: d0c4645ec5c06a51ca5143bfa865a551f1885c18
           path: privacy-lab
           token: ${{ secrets.ONUROS_PRIVACY_LAB_TOKEN || github.token }}
           persist-credentials: false
@@ -57,5 +57,5 @@ jobs:
       - name: Record pinned identities
         run: |
           printf 'blockchain_commit=%s\n' "$GITHUB_SHA"
-          printf 'privacy_lab_commit=%s\n' 'a93bc51f2d60e60ac436c8a87ee5b3f01ed11ded'
+          printf 'privacy_lab_commit=%s\n' 'd0c4645ec5c06a51ca5143bfa865a551f1885c18'
           sha256sum privacy-lab/prototypes/privacy-engine-ffi/Cargo.lock

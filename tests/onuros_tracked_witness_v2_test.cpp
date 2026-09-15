@@ -259,7 +259,7 @@ int main() {
     check(witness->length(leaves, tracked) == ONUROS_PRIVACY_OK);
     check(leaves == 1U && tracked == 1U);
 
-    std::vector<std::uint8_t> snapshot{99U};
+    std::vector<std::uint8_t> snapshot{static_cast<std::uint8_t>(99U)};
     check(witness->export_snapshot(binding(), 1U, snapshot) ==
           ONUROS_PRIVACY_SNAPSHOT_TOO_LARGE);
     check(snapshot.empty());

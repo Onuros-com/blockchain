@@ -42,8 +42,10 @@ Set these identical values on every host:
 ```bash
 PARAMS="$HOME/onuros-candidate/params.bin"
 CORPUS="$HOME/onuros-candidate/payments.bin"
+INITIAL_COMMITMENTS="$HOME/onuros-candidate/initial-commitments.bin"
 PARAMS_SHA="<64 lowercase hex>"
 CORPUS_SHA="<64 lowercase hex>"
+INITIAL_COMMITMENTS_SHA="<64 lowercase hex>"
 ROOT="<64 lowercase hex>"
 BLOCKCHAIN_SHA="<40 lowercase hex>"
 PRIVACY_LAB_SHA="<40 lowercase hex>"
@@ -104,6 +106,8 @@ producer data on both invocations:
   --cert "$TLS/producer.crt" --key "$TLS/producer.key" --ca "$TLS/ca.crt" \
   --expected-peer onuros-validator-a --corpus "$CORPUS" \
   --corpus-sha256 "$CORPUS_SHA" --parameters "$PARAMS" \
+  --initial-commitments "$INITIAL_COMMITMENTS" \
+  --initial-commitments-sha256 "$INITIAL_COMMITMENTS_SHA" \
   --parameters-sha256 "$PARAMS_SHA" --blockchain-commit "$BLOCKCHAIN_SHA" \
   --privacy-lab-commit "$PRIVACY_LAB_SHA" --overlap 50 --workers 8 \
   --manifest evidence/sender-a.manifest
@@ -120,6 +124,8 @@ On each of the other two physical hosts, after the matching sender prints
   --cert "$TLS/validator-a.crt" --key "$TLS/validator-a.key" \
   --ca "$TLS/ca.crt" --expected-peer onuros-producer \
   --corpus "$CORPUS" --corpus-sha256 "$CORPUS_SHA" \
+  --initial-commitments "$INITIAL_COMMITMENTS" \
+  --initial-commitments-sha256 "$INITIAL_COMMITMENTS_SHA" \
   --parameters "$PARAMS" --parameters-sha256 "$PARAMS_SHA" \
   --blockchain-commit "$BLOCKCHAIN_SHA" \
   --privacy-lab-commit "$PRIVACY_LAB_SHA" --workers 8 \
@@ -135,6 +141,8 @@ certificate, key, or expected-peer argument:
   --role restart --node-id validator-a \
   --data-dir "$HOME/onuros-stage7/validator-a" --ca "$TLS/ca.crt" \
   --corpus "$CORPUS" --corpus-sha256 "$CORPUS_SHA" \
+  --initial-commitments "$INITIAL_COMMITMENTS" \
+  --initial-commitments-sha256 "$INITIAL_COMMITMENTS_SHA" \
   --parameters "$PARAMS" --parameters-sha256 "$PARAMS_SHA" \
   --blockchain-commit "$BLOCKCHAIN_SHA" \
   --privacy-lab-commit "$PRIVACY_LAB_SHA" \
@@ -151,7 +159,8 @@ scripts/validate-stage7-performance-evidence.sh block \
 
 The validator requires the same genesis hash, terminal block ID, initial
 candidate root, terminal Poseidon note root, parameter and corpus SHA-256,
-TLS-CA SHA-256, Blockchain commit, Privacy Lab commit, network ID, circuit
+initial-commitment snapshot SHA-256, TLS-CA SHA-256, Blockchain commit,
+Privacy Lab commit, network ID, circuit
 version, and root height. It rejects loopback and requires two separate
 no-network restart manifests. Genesis sync remains `OPEN` until those physical
 manifests exist and pass. The generic transport fixture remains

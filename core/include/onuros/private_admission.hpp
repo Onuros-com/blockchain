@@ -11,6 +11,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -213,6 +214,17 @@ public:
         history_base_root_ = initial_root;
         ordered_roots_.push_back(initial_root);
         active_roots_.emplace(initial_root, 1U);
+    }
+
+    ShieldedState(Hash256 genesis_block, Hash256 initial_root,
+                  std::vector<Hash256> initial_commitments)
+        : ShieldedState(genesis_block, initial_root) {
+        ordered_commitments_ = std::move(initial_commitments);
+        commitments_.insert(ordered_commitments_.begin(),
+                            ordered_commitments_.end());
+        if (commitments_.size() != ordered_commitments_.size())
+            throw std::invalid_argument(
+                "genesis commitments must be unique");
     }
 
     const Hash256& tip() const { return tip_block_; }

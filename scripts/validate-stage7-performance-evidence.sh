@@ -186,6 +186,7 @@ case "$mode" in
       terminal_root="$(field "$manifest" terminal_note_root)"
       parameters="$(field "$manifest" parameters_sha256)"
       corpus="$(field "$manifest" corpus_sha256)"
+      initial_commitments="$(field "$manifest" initial_commitments_sha256)"
       ca="$(field "$manifest" tls_ca_sha256)"
       blockchain="$(field "$manifest" blockchain_commit)"
       privacy_lab="$(field "$manifest" privacy_lab_commit)"
@@ -222,6 +223,7 @@ case "$mode" in
          "$terminal_root" =~ ^[0-9a-f]{64}$ &&
          "$parameters" =~ ^[0-9a-f]{64}$ &&
          "$corpus" =~ ^[0-9a-f]{64}$ &&
+         "$initial_commitments" =~ ^[0-9a-f]{64}$ &&
          "$ca" =~ ^[0-9a-f]{64}$ &&
          "$blockchain" =~ ^[0-9a-f]{40}$ &&
          "$privacy_lab" =~ ^[0-9a-f]{40}$ &&
@@ -239,7 +241,7 @@ case "$mode" in
         echo "receiver block IDs diverged" >&2
         exit 1
       fi
-      identity="$genesis:$candidate_root:$terminal_root:$parameters:$corpus:$ca:$blockchain:$privacy_lab:$network:$circuit:$root_height"
+      identity="$genesis:$candidate_root:$terminal_root:$parameters:$corpus:$initial_commitments:$ca:$blockchain:$privacy_lab:$network:$circuit:$root_height"
       if [[ -z "$expected_identity" ]]; then expected_identity="$identity";
       elif [[ "$identity" != "$expected_identity" ]]; then
         echo "receiver candidate/genesis identities diverged" >&2
@@ -260,13 +262,14 @@ case "$mode" in
       terminal_root="$(field "$manifest" terminal_note_root)"
       parameters="$(field "$manifest" parameters_sha256)"
       corpus="$(field "$manifest" corpus_sha256)"
+      initial_commitments="$(field "$manifest" initial_commitments_sha256)"
       ca="$(field "$manifest" tls_ca_sha256)"
       blockchain="$(field "$manifest" blockchain_commit)"
       privacy_lab="$(field "$manifest" privacy_lab_commit)"
       network="$(field "$manifest" network_id)"
       circuit="$(field "$manifest" circuit_version)"
       root_height="$(field "$manifest" root_height)"
-      identity="$genesis:$candidate_root:$terminal_root:$parameters:$corpus:$ca:$blockchain:$privacy_lab:$network:$circuit:$root_height"
+      identity="$genesis:$candidate_root:$terminal_root:$parameters:$corpus:$initial_commitments:$ca:$blockchain:$privacy_lab:$network:$circuit:$root_height"
       [[ "$role" == "restart" && -n "$node" &&
          "$offline" == "PASS" && "$network_attempted" == "false" &&
          "$restart_tip" == "$expected_id" && "$exit_status" == "0" &&
