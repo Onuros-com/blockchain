@@ -93,9 +93,9 @@ onuros_privacy_status_v1 path(
         std::uint8_t (*siblings)[32], std::uint8_t* right) {
     if (tree == nullptr || root_output == nullptr || siblings == nullptr ||
         right == nullptr) return ONUROS_PRIVACY_NULL_ARGUMENT;
-    std::fill_n(root_output, 32U, 0U);
+    std::fill_n(root_output, 32U, static_cast<std::uint8_t>(0U));
     for (std::size_t level = 0U; level < 32U; ++level) {
-        std::fill_n(siblings[level], 32U, 0U);
+        std::fill_n(siblings[level], 32U, static_cast<std::uint8_t>(0U));
         right[level] = 0U;
     }
     if (tree->tracked.count(position) == 0U)
@@ -156,7 +156,7 @@ onuros_privacy_status_v1 snapshot_export(
     *written = 0U;
     const auto required = snapshot_header + tree->leaves.size();
     if (capacity < required) return ONUROS_PRIVACY_OUTPUT_TOO_SMALL;
-    std::fill_n(output, capacity, 0U);
+    std::fill_n(output, capacity, static_cast<std::uint8_t>(0U));
     output[0] = static_cast<std::uint8_t>(binding->network_id);
     output[1] = static_cast<std::uint8_t>(binding->circuit_version);
     output[2] = static_cast<std::uint8_t>(binding->block_height);
