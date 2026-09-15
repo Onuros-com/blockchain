@@ -51,6 +51,37 @@ int main() {
           accepted.commitments[1][31] == 13U);
     check(accepted.fee == 7);
 
+    Hash256 genesis{};
+    genesis[0] = 1U;
+    ShieldedState state(genesis, accepted.anchor);
+    const PrivateAdmissionLimits limits{
+        onuros_private_payment_bytes, 1U, 2U, 16U};
+    auto prepared = PrivateBlockAdmission::prepare(
+        state, genesis, {payment}, backend, limits);
+    check(prepared.accepted());
+    Hash256 block{};
+    block[0] = 2U;
+    Hash256 resulting_root{};
+    resulting_root[0] = 3U;
+    check(state.connect(block, resulting_root, *prepared.prepared) ==
+          PrivateAdmissionError::none);
+    check(state.tip() == block && state.root() == resulting_root);
+    check(state.spent(accepted.nullifiers[0]));
+    check(state.contains_commitment(accepted.commitments[0]));
+    check(state.contains_commitment(accepted.commitments[1]));
+
+    const auto duplicate = PrivateBlockAdmission::prepare(
+        state, block, {payment}, backend, limits);
+    check(duplicate.error == PrivateAdmissionError::repeated_nullifier);
+    const auto snapshot = state.snapshot();
+    const auto restored = ShieldedState::restore(snapshot);
+    check(restored.has_value());
+    check(restored->tip() == block && restored->root() == resulting_root);
+    check(restored->spent(accepted.nullifiers[0]));
+    check(state.disconnect(block) == PrivateAdmissionError::none);
+    check(state.tip() == genesis && state.root() == accepted.anchor);
+    check(!state.spent(accepted.nullifiers[0]));
+
     auto malformed = payment;
     malformed.body.pop_back();
     check(backend.verify(malformed).error ==

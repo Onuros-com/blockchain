@@ -1,9 +1,17 @@
 # Stage 7 published-host synchronization runbook
 
-This procedure closes the physical portion of Stage 7 Gates 2, 3 and 8. It
-synchronizes two fresh independently administered clients from one published
-server, starts the second client late, and reopens the first client's durable
-database after the server exits.
+This procedure qualifies the published-host transport and durable block-store
+synchronization path. It synchronizes two fresh independently administered
+clients from one published server, starts the second client late, and reopens
+the first client's durable database after the server exits.
+
+It does **not** close the active 584-byte privacy-protocol portion of Stage 7
+Gates 2, 3 and 8. The current executable uses bounded deterministic transport
+fixtures and records `active_privacy_protocol_qualified=false`. Final migration
+evidence must additionally use the linked Onuros Privacy Engine, admit genuine
+584-byte payments, and demonstrate a common candidate note root from genesis,
+late synchronization and restart. Orchard evidence and this transport fixture
+must not be presented as that result.
 
 The local `run-stage7-three-process.sh` test remains a regression gate. It is
 not physical evidence.
@@ -136,6 +144,8 @@ bash scripts/validate-stage7-sync-evidence.sh \
 
 A pass requires three distinct physical node identities, one source commit,
 one TLS CA, authenticated TLS for the network sessions, nonzero useful bytes
-at both clients, one height and tip across every manifest, and a recovered
-restart identity matching the initial client. File-hash mismatch, symbolic
-links, private-key files or private-key PEM material fail closed.
+at both clients, and one genesis, height, tip and shielded-root commitment
+across every manifest. It also requires a recovered restart identity matching
+the initial client. File-hash mismatch, symbolic links, private-key files or
+private-key PEM material fail closed. The result is a transport synchronization
+pass only; the candidate protocol gate remains open.

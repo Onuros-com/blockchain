@@ -125,6 +125,22 @@ if bash "$(dirname "$0")/validate-stage7-sync-evidence.sh" \
 fi
 rm -rf "$run_dir/tampered-client-b"
 
+cp -a "$run_dir/final-client-b" "$run_dir/tampered-client-b"
+sed -i 's/^shielded_root=./shielded_root=f/' \
+  "$run_dir/tampered-client-b/node-manifest.txt"
+tampered_hash="$(sha256sum "$run_dir/tampered-client-b/node-manifest.txt" | \
+  awk '{print $1}')"
+sed -i "s/^node_manifest_sha256=.*/node_manifest_sha256=$tampered_hash/" \
+  "$run_dir/tampered-client-b/host-manifest.txt"
+if bash "$(dirname "$0")/validate-stage7-sync-evidence.sh" \
+    "$run_dir/final-server" "$run_dir/final-client-a" \
+    "$run_dir/tampered-client-b" \
+    "$run_dir/final-client-a-restart" >/dev/null 2>&1; then
+  echo "divergent shielded root was accepted" >&2
+  exit 1
+fi
+rm -rf "$run_dir/tampered-client-b"
+
 find "$run_dir" -type f \( -name '*.key' -o -name 'ca.srl' \) -delete
 echo "stage7_independent_sync_loopback=PASS tip=$server_tip"
 echo "evidence=$run_dir"

@@ -243,7 +243,8 @@ struct NetworkOptions {
 };
 
 void write_manifest(const NetworkOptions& options, const std::string& mode,
-                    Height height, const Hash256& tip,
+                    Height height, const Hash256& tip, const Hash256& genesis,
+                    const Hash256& shielded_root,
                     const std::string& cipher, bool authenticated,
                     std::uint64_t useful_bytes = 0U) {
     if (options.manifest.empty()) return;
@@ -257,7 +258,11 @@ void write_manifest(const NetworkOptions& options, const std::string& mode,
            << "node_id=" << options.node_id << '\n'
            << "mode=" << mode << '\n'
            << "height=" << height << '\n'
+           << "genesis=" << hash_hex(genesis) << '\n'
            << "tip=" << hash_hex(tip) << '\n'
+           << "shielded_root=" << hash_hex(shielded_root) << '\n'
+           << "qualification_profile=transport-fixture-v1\n"
+           << "active_privacy_protocol_qualified=false\n"
            << "useful_bytes=" << useful_bytes << '\n'
            << "transport_authenticated="
            << (authenticated ? "true" : "false") << '\n'
@@ -328,7 +333,11 @@ void run_server(const NetworkOptions& options) {
     }
     const auto* tip = node.store().index().active_tip();
     if (tip == nullptr) throw std::runtime_error("server tip is missing");
-    write_manifest(options, "served", tip->height, tip->id, cipher,
+    const auto* tip_block = node.store().find(tip->id);
+    if (tip_block == nullptr) throw std::runtime_error("server block is missing");
+    write_manifest(options, "served", tip->height, tip->id,
+                   block_id(genesis.header), tip_block->block.header.shielded_root,
+                   cipher,
                    options.tls_enabled());
     std::cout << "SYNCED peers=" << options.peers
               << " tip=" << hash_hex(tip->id) << std::endl;
@@ -344,7 +353,12 @@ void run_client(const NetworkOptions& options) {
     const auto genesis = ensure_genesis(node);
     const auto* existing = node.store().index().active_tip();
     if (existing != nullptr && existing->height == options.blocks) {
+        const auto* recovered = node.store().find(existing->id);
+        if (recovered == nullptr)
+            throw std::runtime_error("recovered block is missing");
         write_manifest(options, "recovered", existing->height, existing->id,
+                       block_id(genesis.header),
+                       recovered->block.header.shielded_root,
                        "not_applicable", false);
         std::cout << "RECOVERED height=" << options.blocks
                   << " tip=" << hash_hex(existing->id)
@@ -466,7 +480,11 @@ void run_client(const NetworkOptions& options) {
     const auto* tip = node.store().index().active_tip();
     if (tip == nullptr || tip->height != options.blocks)
         throw std::runtime_error("client did not activate synchronized block");
-    write_manifest(options, "initial", tip->height, tip->id, cipher,
+    const auto* tip_block = node.store().find(tip->id);
+    if (tip_block == nullptr) throw std::runtime_error("client block is missing");
+    write_manifest(options, "initial", tip->height, tip->id,
+                   block_id(genesis.header), tip_block->block.header.shielded_root,
+                   cipher,
                    options.tls_enabled(), coordinator.accounting().useful_bytes);
     std::cout << "SYNCED height=" << options.blocks
               << " useful_bytes=" << coordinator.accounting().useful_bytes
