@@ -42,6 +42,10 @@ check_bundle() {
   if grep -aER 'BEGIN .*PRIVATE KEY' "$directory" >/dev/null; then
     fail "private-key material present in $directory"
   fi
+  if grep -aEiR '(^|[^[:alnum:]_])(mnemonic|secret_seed|wallet_seed|spending_key|payment_plaintext|rseed)[[:space:]]*[:=]' \
+      "$directory" >/dev/null; then
+    fail "secret seed or payment plaintext present in $directory"
+  fi
 
   local role commit binary_hash certificate_hash ca_hash manifest_hash log_hash
   local actual_manifest_hash actual_log_hash
