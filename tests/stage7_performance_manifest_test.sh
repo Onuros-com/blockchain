@@ -57,6 +57,16 @@ done
 bash "$validator" relay "$work/a.relay" "$work/b.relay" "$work/c.relay" |
   grep -q '^stage7_unique_relay_gate=PASS '
 
+sed -i -e 's/66000/65999/g' \
+  -e 's/admitted_tps=110.000000/admitted_tps=109.998333/' "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted fewer than 66,000 unique payments" >&2
+  exit 1
+fi
+sed -i -e 's/65999/66000/g' \
+  -e 's/admitted_tps=109.998333/admitted_tps=110.000000/' "$work/c.relay"
+
 sed -i 's/^queue_high_watermark=32$/queue_high_watermark=0/' "$work/c.relay"
 if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
     "$work/c.relay" >/dev/null 2>&1; then
