@@ -194,5 +194,14 @@ if bash "$bundle_validator" block "$work/rtx3060" "$work/rtx4070" \
   echo "bundle validator accepted private-key material" >&2
   exit 1
 fi
+rm "$work/rtx4070/leaked.key"
+
+printf '%s\n' 'secret_seed=do-not-publish' >>"$work/rtx4070/host-manifest.txt"
+if bash "$bundle_validator" block "$work/rtx3060" "$work/rtx4070" \
+    "$work/rtx3060-restart" "$work/rtx4070-restart" \
+    >/dev/null 2>&1; then
+  echo "bundle validator accepted secret seed material" >&2
+  exit 1
+fi
 
 printf 'stage7_evidence_bundle_validator=PASS\n'
