@@ -75,7 +75,7 @@ case "$mode" in
           measured=a / d;
           delta=reported - measured;
           if (delta < 0) delta=-delta;
-          exit(d + 0 >= 600 && s + 0 >= a + 0 && a + 0 >= 60000 &&
+          exit(d + 0 >= 600 && s + 0 >= a + 0 && a + 0 >= 66000 &&
                measured >= 100 && r + 0 == a + 0 && q + 0 > 0 &&
                q + 0 <= ql + 0 && ql + 0 > 0 && vb + 0 > 0 &&
                vt + 0 == a + 0 && vw + 0 > 0 && vw + 0 <= ql + 0 &&
@@ -141,7 +141,7 @@ case "$mode" in
       echo "relay manifests do not cover origin, relay and observer" >&2
       exit 1
     }
-    printf 'stage7_unique_relay_gate=PASS nodes=3 minimum_tps=100 minimum_seconds=600 id_set_sha256=%s\n' "$expected_set"
+    printf 'stage7_unique_relay_gate=PASS nodes=3 minimum_payments=66000 minimum_tps=100 minimum_seconds=600 id_set_sha256=%s\n' "$expected_set"
     ;;
   block)
     [[ "$#" -eq 5 ]] || {
