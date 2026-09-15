@@ -25,6 +25,20 @@ header, network ID, root height, initial Poseidon root, and TLS CA SHA-256.
 Each host gets only its own certificate/private key and the public CA
 certificate. Never copy the CA private key or runtime private keys into evidence.
 
+Generate at least 66,000 unique payments for the documented 600-second,
+110-payments/s run. This is a new candidate corpus, not the 6,000-payment
+comparison checkpoint:
+
+```bash
+export ONUROS_PRIVACY_LAB_DIR="$HOME/Onuros-privacy-lab"
+export ONUROS_CORPUS_DIR="$HOME/onuros-candidate"
+export ONUROS_UNIQUE_PAYMENTS=66000
+cargo run --release --locked \
+  --manifest-path "$ONUROS_PRIVACY_LAB_DIR/prototypes/hash-compare/Cargo.toml" \
+  --bin unique-batch-smoke | tee evidence/corpus-generation.json
+sha256sum "$ONUROS_CORPUS_DIR"/{params.bin,payments.bin,initial-commitments.bin}
+```
+
 ## Build
 
 ```bash
@@ -49,7 +63,7 @@ INITIAL_COMMITMENTS_SHA="<64 lowercase hex>"
 ROOT="<64 lowercase hex>"
 BLOCKCHAIN_SHA="<40 lowercase hex>"
 PRIVACY_LAB_SHA="<40 lowercase hex>"
-COMMON="--parameters $PARAMS --parameters-sha256 $PARAMS_SHA --network-id 1 --circuit-version 1 --root-height 100 --root $ROOT --blockchain-commit $BLOCKCHAIN_SHA --privacy-lab-commit $PRIVACY_LAB_SHA"
+COMMON="--parameters $PARAMS --parameters-sha256 $PARAMS_SHA --network-id 1330533714 --circuit-version 1 --root-height 100 --root $ROOT --blockchain-commit $BLOCKCHAIN_SHA --privacy-lab-commit $PRIVACY_LAB_SHA"
 ```
 
 Start the relay first:
