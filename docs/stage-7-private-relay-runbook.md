@@ -157,6 +157,7 @@ On each host, capture the corresponding manifest and log:
 ```bash
 bash scripts/capture-stage7-private-load-evidence.sh \
   "$OUTPUT" ROLE "$EVIDENCE/ROLE.manifest" "$EVIDENCE/ROLE.log" \
+  "$EVIDENCE/ROLE.resource.log" \
   ./build-stage7-private-load/onuros_stage7_private_load_node \
   "$TLS_DIR/ROLE.crt" "$TLS_DIR/ca.crt"
 ```

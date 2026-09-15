@@ -182,6 +182,9 @@ if(NOT WIN32)
   add_test(NAME stage7_evidence_bundle COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/tests/stage7_evidence_bundle_test.sh
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-stage7-evidence-bundle.sh)
+  add_test(NAME stage7_capture_evidence COMMAND bash
+           ${CMAKE_CURRENT_SOURCE_DIR}/tests/stage7_capture_evidence_test.sh
+           ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture-stage7-private-load-evidence.sh)
   add_test(NAME active_privacy_protocol_audit COMMAND bash
            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/audit-active-privacy-protocol.sh)
   add_test(NAME stage7_three_process COMMAND bash

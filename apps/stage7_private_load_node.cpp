@@ -244,6 +244,8 @@ public:
 class FramedTls {
     TlsPeerTransport transport_;
     FrameStreamDecoder decoder_{P2pFrameLimits{}, 1024U * 1024U};
+    std::uint64_t application_bytes_sent_ = 0U;
+    std::uint64_t application_bytes_received_ = 0U;
 
 public:
     FramedTls(TlsContext& context, TcpConnection connection, TlsRole role,
@@ -275,6 +277,7 @@ public:
         }
         if (offset != encoded.size())
             throw std::runtime_error("TLS peer write timeout");
+        application_bytes_sent_ += encoded.size();
     }
 
     P2pFrame receive() {
@@ -287,6 +290,7 @@ public:
                 throw std::runtime_error("invalid TLS peer frame");
             const auto received = transport_.receive_some(bytes.data(), bytes.size());
             if (received.status == SocketIoStatus::ok) {
+                application_bytes_received_ += received.bytes;
                 if (!decoder_.feed(bytes.data(), received.bytes))
                     throw std::runtime_error("TLS frame buffer limit exceeded");
             } else if (received.status != SocketIoStatus::would_block) {
@@ -298,6 +302,12 @@ public:
     }
 
     const char* cipher() const noexcept { return transport_.cipher(); }
+    std::uint64_t application_bytes_sent() const noexcept {
+        return application_bytes_sent_;
+    }
+    std::uint64_t application_bytes_received() const noexcept {
+        return application_bytes_received_;
+    }
 };
 
 void exchange_hello(FramedTls& peer, std::uint64_t nonce) {
@@ -376,6 +386,12 @@ struct RunStats {
     std::uint64_t verification_workers = 0U;
     std::uint64_t verification_pool_starts = 0U;
     double verification_seconds = 0.0;
+    double admission_latency_p50_ms = 0.0;
+    double admission_latency_p95_ms = 0.0;
+    double admission_latency_p99_ms = 0.0;
+    double admission_latency_max_ms = 0.0;
+    std::uint64_t application_bytes_sent = 0U;
+    std::uint64_t application_bytes_received = 0U;
     std::uint64_t divergent = 0U;
     Hash256 id_set{};
     Hash256 first{};
@@ -413,6 +429,15 @@ void write_manifest(const std::filesystem::path& path, const RunStats& stats) {
            << "verification_pool_starts="
            << stats.verification_pool_starts << '\n'
            << "verification_seconds=" << stats.verification_seconds << '\n'
+           << "admission_latency_sample=batch\n"
+           << "admission_latency_percentile=nearest-rank\n"
+           << "admission_latency_p50_ms=" << stats.admission_latency_p50_ms << '\n'
+           << "admission_latency_p95_ms=" << stats.admission_latency_p95_ms << '\n'
+           << "admission_latency_p99_ms=" << stats.admission_latency_p99_ms << '\n'
+           << "admission_latency_max_ms=" << stats.admission_latency_max_ms << '\n'
+           << "application_bytes_sent=" << stats.application_bytes_sent << '\n'
+           << "application_bytes_received="
+           << stats.application_bytes_received << '\n'
            << "admitted_tps="
            << (stats.duration_seconds == 0.0
                    ? 0.0
@@ -641,25 +666,42 @@ void record_ids(const std::vector<TransactionEnvelope>& transactions,
         identifiers.push_back(transaction_id(transaction));
 }
 
-void require_admitted(PrivacyEngineNetworkAdmission& admission,
-                      const P2pFrame& frame, std::size_t workers,
-                      std::vector<Hash256>& identifiers) {
+double require_admitted(PrivacyEngineNetworkAdmission& admission,
+                        const P2pFrame& frame, std::size_t workers,
+                        std::vector<Hash256>& identifiers) {
     const auto decoded = decode_network_transactions(
         frame.payload, {256U * 1024U, 32U, onuros_private_payment_bytes});
     if (!decoded.accepted()) throw std::runtime_error("transaction decode failed");
+    const auto started = Clock::now();
     const auto result = admission.handle_frame_parallel(frame, workers);
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        Clock::now() - started).count();
     if (!result || !result->accepted() ||
         result->accepted_transactions != decoded.transactions.size())
         throw std::runtime_error("Privacy Engine transaction admission failed");
     record_ids(decoded.transactions, identifiers);
+    return elapsed;
+}
+
+double nearest_rank_percentile(std::vector<double> samples,
+                               std::size_t numerator) {
+    if (samples.empty() || numerator == 0U || numerator > 100U)
+        throw std::runtime_error("invalid admission latency samples");
+    std::sort(samples.begin(), samples.end());
+    const auto rank = (numerator * samples.size() + 99U) / 100U;
+    return samples[rank - 1U];
 }
 
 RunStats complete_stats(const std::string& role, Clock::time_point started,
                         std::uint64_t submitted,
                         const PrivacyEngineNetworkAdmission& admission,
                         const std::vector<Hash256>& identifiers,
+                        const std::vector<double>& admission_latencies,
+                        std::uint64_t application_bytes_sent,
+                        std::uint64_t application_bytes_received,
                         std::uint64_t divergent, const char* cipher) {
-    if (identifiers.empty()) throw std::runtime_error("empty transaction set");
+    if (identifiers.empty() || admission_latencies.empty())
+        throw std::runtime_error("empty transaction measurements");
     RunStats stats;
     stats.role = role;
     stats.duration_seconds =
@@ -680,6 +722,17 @@ RunStats complete_stats(const std::string& role, Clock::time_point started,
     stats.verification_seconds =
         static_cast<double>(admission.metrics().verification_microseconds) /
         1'000'000.0;
+    stats.admission_latency_p50_ms =
+        nearest_rank_percentile(admission_latencies, 50U);
+    stats.admission_latency_p95_ms =
+        nearest_rank_percentile(admission_latencies, 95U);
+    stats.admission_latency_p99_ms =
+        nearest_rank_percentile(admission_latencies, 99U);
+    stats.admission_latency_max_ms =
+        *std::max_element(admission_latencies.begin(),
+                          admission_latencies.end());
+    stats.application_bytes_sent = application_bytes_sent;
+    stats.application_bytes_received = application_bytes_received;
     stats.divergent = divergent;
     stats.id_set = id_set_hash(identifiers);
     stats.first = identifiers.front();
@@ -713,11 +766,14 @@ RunStats run_observer(const Options& options) {
         options.root_height, options.max_root_age);
     std::vector<Hash256> identifiers;
     identifiers.reserve(static_cast<std::size_t>(control.transactions));
+    std::vector<double> admission_latencies;
+    admission_latencies.reserve(static_cast<std::size_t>(control.transactions));
     const auto started = Clock::now();
     for (;;) {
         const auto frame = relay.receive();
         if (frame.type == P2pMessageType::transactions) {
-            require_admitted(*admission, frame, options.workers, identifiers);
+            admission_latencies.push_back(require_admitted(
+                *admission, frame, options.workers, identifiers));
         } else if (frame.type == P2pMessageType::ping &&
                    begins_with(frame.payload, finish_magic)) {
             break;
@@ -730,7 +786,8 @@ RunStats run_observer(const Options& options) {
                 encode_summary(summary)});
     return stamp_identity(complete_stats(
         "observer", started, identifiers.size(), *admission, identifiers,
-        0U, relay.cipher()), options);
+        admission_latencies, relay.application_bytes_sent(),
+        relay.application_bytes_received(), 0U, relay.cipher()), options);
 }
 
 RunStats run_relay(const Options& options) {
@@ -769,11 +826,14 @@ RunStats run_relay(const Options& options) {
         options.root_height, options.max_root_age);
     std::vector<Hash256> identifiers;
     identifiers.reserve(static_cast<std::size_t>(control.transactions));
+    std::vector<double> admission_latencies;
+    admission_latencies.reserve(static_cast<std::size_t>(control.transactions));
     const auto started = Clock::now();
     for (;;) {
         const auto frame = origin.receive();
         if (frame.type == P2pMessageType::transactions) {
-            require_admitted(*admission, frame, options.workers, identifiers);
+            admission_latencies.push_back(require_admitted(
+                *admission, frame, options.workers, identifiers));
             observer.send(frame);
         } else if (frame.type == P2pMessageType::ping &&
                    begins_with(frame.payload, finish_magic)) {
@@ -794,6 +854,10 @@ RunStats run_relay(const Options& options) {
                  encode_relay_summary(relay_summary, observer_summary)});
     return stamp_identity(complete_stats(
         "relay", started, identifiers.size(), *admission, identifiers,
+        admission_latencies,
+        origin.application_bytes_sent() + observer.application_bytes_sent(),
+        origin.application_bytes_received() +
+            observer.application_bytes_received(),
         divergent, origin.cipher()), options);
 }
 
@@ -831,6 +895,9 @@ RunStats run_origin(const Options& options) {
         options.root_height, options.max_root_age);
     std::vector<Hash256> identifiers;
     identifiers.reserve(static_cast<std::size_t>(target));
+    std::vector<double> admission_latencies;
+    admission_latencies.reserve(static_cast<std::size_t>(
+        (target + options.batch - 1U) / options.batch));
     StartControl control;
     control.transactions = target;
     control.duration_seconds = options.duration;
@@ -853,7 +920,8 @@ RunStats run_origin(const Options& options) {
             throw std::runtime_error("Onuros corpus ended early");
         P2pFrame frame{stage7_protocol_version, P2pMessageType::transactions,
                        request_id++, encode_network_transactions(transactions)};
-        require_admitted(*admission, frame, options.workers, identifiers);
+        admission_latencies.push_back(require_admitted(
+            *admission, frame, options.workers, identifiers));
         relay.send(frame);
         submitted += transactions.size();
         const auto target_elapsed = std::chrono::duration<double>(
@@ -878,8 +946,9 @@ RunStats run_origin(const Options& options) {
         local.transactions != observer_summary.transactions ||
         local.id_set != observer_summary.id_set ? 1U : 0U;
     return stamp_identity(complete_stats(
-        "origin", started, submitted, *admission, identifiers, divergent,
-        relay.cipher()), options);
+        "origin", started, submitted, *admission, identifiers,
+        admission_latencies, relay.application_bytes_sent(),
+        relay.application_bytes_received(), divergent, relay.cipher()), options);
 }
 
 void usage(const char* program) {

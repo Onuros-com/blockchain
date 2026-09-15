@@ -728,6 +728,9 @@ struct ReceiverResult {
     std::size_t request_bytes = 0U;
     std::size_t response_bytes = 0U;
     double elapsed = 0.0;
+    std::uintmax_t durable_state_bytes = 0U;
+    std::uint64_t file_sync_calls = 0U;
+    std::uint64_t directory_sync_calls = 0U;
     Hash256 block_identifier{};
     Hash256 terminal_note_root{};
     std::string cipher;
@@ -778,6 +781,7 @@ ReceiverResult receive_block(FramedTls& sender, const Options& options,
         }
     }
     const auto started = Clock::now();
+    const auto sync_before = detail::durability_sync_snapshot();
     const auto announcement = decode_compact_block_announcement(
         announcement_frame.payload, 4096U, 256U * 1024U);
     if (!announcement || announcement->header.previous != block_id(genesis.header))
@@ -865,12 +869,20 @@ ReceiverResult receive_block(FramedTls& sender, const Options& options,
     }
     const auto elapsed = std::chrono::duration<double>(
         Clock::now() - started).count();
+    const auto sync_after = detail::durability_sync_snapshot();
+    const auto durable_state_bytes = std::filesystem::file_size(blocks) +
+        std::filesystem::file_size(shielded_path) +
+        std::filesystem::file_size(journal);
     if (overlap_transactions !=
         (block.transactions.size() - 1U) * overlap / 100U)
         throw std::runtime_error("receiver mempool overlap mismatch");
     return {encoded.size(), block.transactions.size(), overlap_transactions,
             announcement_frame.payload.size() + p2p_frame_header_size,
-            request_wire, response_wire, elapsed, block_id(block.header),
+            request_wire, response_wire, elapsed, durable_state_bytes,
+            sync_after.file_sync_calls - sync_before.file_sync_calls,
+            sync_after.directory_sync_calls -
+                sync_before.directory_sync_calls,
+            block_id(block.header),
             block.header.shielded_root,
             sender.cipher() == nullptr ? "unknown" : sender.cipher()};
 }
@@ -912,6 +924,9 @@ void run_receiver(const Options& options) {
              << "announcement_bytes=" << result.announcement_bytes << '\n'
              << "request_bytes=" << result.request_bytes << '\n'
              << "response_bytes=" << result.response_bytes << '\n'
+             << "durable_state_bytes=" << result.durable_state_bytes << '\n'
+             << "file_sync_calls=" << result.file_sync_calls << '\n'
+             << "directory_sync_calls=" << result.directory_sync_calls << '\n'
              << std::fixed << std::setprecision(6)
              << "propagation_validation_seconds=" << result.elapsed << '\n'
              << "block_id=" << hash_hex(result.block_identifier) << '\n'
@@ -958,9 +973,11 @@ void run_restart(const Options& options) {
         throw std::runtime_error("Privacy Lab corpus SHA-256 mismatch");
     const auto initial_commitments = read_initial_commitments(options, corpus);
     const auto genesis = make_genesis(corpus.anchor());
+    const auto sync_before = detail::durability_sync_snapshot();
     const auto parameters = node_parameters();
     const auto blocks = options.data_dir / "blocks.db";
     const auto shielded_path = options.data_dir / "shielded.db";
+    const auto journal = options.data_dir / "private-commit.db";
     LocalNode node(parameters, [](const BlockHeader& header) {
         return std::optional<Hash256>{pow_hash(header)};
     });
@@ -971,6 +988,10 @@ void run_restart(const Options& options) {
         64U * 1024U * 1024U, candidate_shielded_max_entries);
     if (shielded.open(shielded_path) != ShieldedStoreError::none)
         throw std::runtime_error("offline shielded restart failed");
+    const auto sync_after = detail::durability_sync_snapshot();
+    const auto durable_state_bytes = std::filesystem::file_size(blocks) +
+        std::filesystem::file_size(shielded_path) +
+        std::filesystem::file_size(journal);
     const auto* tip = node.store().index().active_tip();
     if (tip == nullptr || tip->height != 1U ||
         tip->id != shielded.state().tip() ||
@@ -980,6 +1001,12 @@ void run_restart(const Options& options) {
     if (!manifest) throw std::runtime_error("restart manifest open failed");
     manifest << "role=restart\nnode_id=" << options.node_id << '\n'
              << "offline_restart=PASS\nprocess_exit_status=0\n"
+             << "durable_state_bytes=" << durable_state_bytes << '\n'
+             << "file_sync_calls="
+             << sync_after.file_sync_calls - sync_before.file_sync_calls << '\n'
+             << "directory_sync_calls="
+             << sync_after.directory_sync_calls -
+                    sync_before.directory_sync_calls << '\n'
              << "genesis=" << hash_hex(block_id(genesis.header)) << '\n'
              << "tip=" << hash_hex(tip->id) << '\n'
              << "candidate_root=" << hash_hex(corpus.anchor()) << '\n'

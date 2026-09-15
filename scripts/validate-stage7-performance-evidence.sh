@@ -41,6 +41,14 @@ case "$mode" in
       verification_workers="$(field "$manifest" verification_workers)"
       verification_pool_starts="$(field "$manifest" verification_pool_starts)"
       verification_seconds="$(field "$manifest" verification_seconds)"
+      latency_sample="$(field "$manifest" admission_latency_sample)"
+      percentile_rule="$(field "$manifest" admission_latency_percentile)"
+      latency_p50="$(field "$manifest" admission_latency_p50_ms)"
+      latency_p95="$(field "$manifest" admission_latency_p95_ms)"
+      latency_p99="$(field "$manifest" admission_latency_p99_ms)"
+      latency_max="$(field "$manifest" admission_latency_max_ms)"
+      application_sent="$(field "$manifest" application_bytes_sent)"
+      application_received="$(field "$manifest" application_bytes_received)"
       admitted_tps="$(field "$manifest" admitted_tps)"
       divergent="$(field "$manifest" divergent_transactions)"
       overflow="$(field "$manifest" limits_exceeded)"
@@ -70,7 +78,10 @@ case "$mode" in
           -v r="$relayed" -v q="$queue" -v ql="$queue_limit" \
           -v vb="$verification_batches" -v vt="$verification_tasks" \
           -v vw="$verification_workers" -v ps="$verification_pool_starts" \
-          -v vs="$verification_seconds" -v reported="$admitted_tps" '
+          -v vs="$verification_seconds" -v reported="$admitted_tps" \
+          -v p50="$latency_p50" -v p95="$latency_p95" \
+          -v p99="$latency_p99" -v maximum="$latency_max" \
+          -v sent="$application_sent" -v received="$application_received" '
         BEGIN {
           measured=a / d;
           delta=reported - measured;
@@ -80,7 +91,10 @@ case "$mode" in
                q + 0 <= ql + 0 && ql + 0 > 0 && vb + 0 > 0 &&
                vt + 0 == a + 0 && vw + 0 > 0 && vw + 0 <= ql + 0 &&
                ps + 0 == 1 &&
-               vs + 0 > 0 && vs + 0 <= d + 0 && delta < 0.001 ? 0 : 1)
+               vs + 0 > 0 && vs + 0 <= d + 0 &&
+               p50 + 0 > 0 && p50 + 0 <= p95 + 0 &&
+               p95 + 0 <= p99 + 0 && p99 + 0 <= maximum + 0 &&
+               sent + 0 > 0 && received + 0 > 0 && delta < 0.001 ? 0 : 1)
         }
       ' || { echo "relay rate/duration gate failed: $manifest" >&2; exit 1; }
       [[ "$role" =~ ^(origin|relay|observer)$ &&
@@ -91,6 +105,14 @@ case "$mode" in
          "$verification_workers" =~ ^[0-9]+$ &&
          "$verification_pool_starts" =~ ^[0-9]+$ &&
          "$verification_seconds" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$latency_sample" == "batch" &&
+         "$percentile_rule" == "nearest-rank" &&
+         "$latency_p50" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$latency_p95" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$latency_p99" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$latency_max" =~ ^[0-9]+([.][0-9]+)?$ &&
+         "$application_sent" =~ ^[1-9][0-9]*$ &&
+         "$application_received" =~ ^[1-9][0-9]*$ &&
          "$admitted_tps" =~ ^[0-9]+([.][0-9]+)?$ &&
          "$divergent" == "0" && "$overflow" == "0" &&
          "$backend" == "onuros-privacy-engine-abi-v1" &&
@@ -163,6 +185,9 @@ case "$mode" in
       announcement="$(field "$manifest" announcement_bytes)"
       request="$(field "$manifest" request_bytes)"
       response="$(field "$manifest" response_bytes)"
+      durable_bytes="$(field "$manifest" durable_state_bytes)"
+      file_syncs="$(field "$manifest" file_sync_calls)"
+      directory_syncs="$(field "$manifest" directory_sync_calls)"
       elapsed="$(field "$manifest" propagation_validation_seconds)"
       block_id="$(field "$manifest" block_id)"
       limits="$(field "$manifest" limits_exceeded)"
@@ -197,15 +222,20 @@ case "$mode" in
       payloads="$(field "$manifest" private_payloads_logged)"
       awk -v b="$bytes" -v e="$elapsed" -v t="$transactions" \
           -v o="$overlap" -v ot="$overlap_transactions" \
-          -v a="$announcement" -v q="$request" -v r="$response" '
+          -v a="$announcement" -v q="$request" -v r="$response" \
+          -v db="$durable_bytes" -v fs="$file_syncs" \
+          -v ds="$directory_syncs" '
         BEGIN {
           limit=16777216;
           exit(b > 3504000 && b <= limit && e <= 30.0 &&
                t == 6001 && o > 0 && o < 100 && ot > 0 &&
-               a > 0 && q > 0 && r > 0 ? 0 : 1)
+               a > 0 && q > 0 && r > 0 && db > 0 && fs > 0 && ds >= 0 ? 0 : 1)
         }
       ' || { echo "block size/latency gate failed: $manifest" >&2; exit 1; }
       [[ "$role" == "receiver" && -n "$receiver" &&
+         "$durable_bytes" =~ ^[1-9][0-9]*$ &&
+         "$file_syncs" =~ ^[1-9][0-9]*$ &&
+         "$directory_syncs" =~ ^[0-9]+$ &&
          "$block_id" =~ ^[0-9a-f]{64}$ && "$limits" == "0" &&
          "$validation" == "PASS" && "$durable" == "PASS" &&
          "$late" == "PASS" && "$restart" == "PASS" &&
@@ -257,6 +287,9 @@ case "$mode" in
       network_attempted="$(field "$manifest" network_attempted)"
       restart_tip="$(field "$manifest" tip)"
       exit_status="$(field "$manifest" process_exit_status)"
+      durable_bytes="$(field "$manifest" durable_state_bytes)"
+      file_syncs="$(field "$manifest" file_sync_calls)"
+      directory_syncs="$(field "$manifest" directory_sync_calls)"
       genesis="$(field "$manifest" genesis)"
       candidate_root="$(field "$manifest" candidate_root)"
       terminal_root="$(field "$manifest" terminal_note_root)"
@@ -273,6 +306,9 @@ case "$mode" in
       [[ "$role" == "restart" && -n "$node" &&
          "$offline" == "PASS" && "$network_attempted" == "false" &&
          "$restart_tip" == "$expected_id" && "$exit_status" == "0" &&
+         "$durable_bytes" =~ ^[1-9][0-9]*$ &&
+         "$file_syncs" =~ ^[0-9]+$ &&
+         "$directory_syncs" =~ ^[0-9]+$ &&
          "$identity" == "$expected_identity" ]] || {
         echo "offline restart invariant failed: $manifest" >&2
         exit 1

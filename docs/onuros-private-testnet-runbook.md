@@ -7,7 +7,7 @@ the physical three-host runs and their reviewed manifests remain open.
 
 Use three genuinely independent physical hosts on non-loopback addresses:
 
-| Role | Minimum purpose | Suggested baseline |
+| Role | Minimum purpose | Minimum required hardware |
 | --- | --- | --- |
 | Origin/producer | Streams the pinned unique-payment corpus | 8 CPU threads, 16 GiB RAM, SSD |
 | Relay/validator | Validates then relays every payment | 8 CPU threads, 16 GiB RAM, SSD |
@@ -51,6 +51,11 @@ The build must report `groth16-bls12-381`, `poseidon`, and the linked
 
 ## 600-second private relay
 
+Run `set -o pipefail` in each shell. GNU `time -v` records CPU time, peak RSS,
+filesystem I/O counters and the process exit status in a separate raw resource
+log; the candidate manifest records admission percentiles and exact encoded-P2P
+application byte counts.
+
 Set these identical values on every host:
 
 ```bash
@@ -69,6 +74,7 @@ COMMON="--parameters $PARAMS --parameters-sha256 $PARAMS_SHA --network-id 133053
 Start the relay first:
 
 ```bash
+/usr/bin/time -v -o evidence/relay.resource.log \
 ./build-stage7-private-load/onuros_stage7_private_load_node \
   --role relay --bind 0.0.0.0 --port 39447 \
   --cert "$TLS/relay.crt" --key "$TLS/relay.key" --ca "$TLS/ca.crt" \
@@ -80,6 +86,7 @@ Start the relay first:
 Start the origin, then the observer:
 
 ```bash
+/usr/bin/time -v -o evidence/origin.resource.log \
 ./build-stage7-private-load/onuros_stage7_private_load_node \
   --role origin --address RELAY_IP --port 39447 \
   --cert "$TLS/origin.crt" --key "$TLS/origin.key" --ca "$TLS/ca.crt" \
@@ -88,6 +95,7 @@ Start the origin, then the observer:
   --node-id origin-host $COMMON \
   --manifest evidence/origin.manifest 2>&1 | tee evidence/origin.log
 
+/usr/bin/time -v -o evidence/observer.resource.log \
 ./build-stage7-private-load/onuros_stage7_private_load_node \
   --role observer --address RELAY_IP --port 39447 \
   --cert "$TLS/observer.crt" --key "$TLS/observer.key" --ca "$TLS/ca.crt" \
@@ -97,9 +105,20 @@ Start the origin, then the observer:
 
 Validate the manifests with
 `scripts/validate-stage7-performance-evidence.sh relay ...`. It rejects
-loopback, repeated node IDs, identity mismatches, fewer than 60,000 admitted
+loopback, repeated node IDs, identity mismatches, fewer than 66,000 admitted
 payments, less than 600 seconds, less than 100 payments/s, divergence, missing
 queue instrumentation, or a backend other than the Privacy Engine.
+
+Before transfer, run the capture command separately on each corresponding
+host, substituting its role, certificate and paths:
+
+```bash
+bash scripts/capture-stage7-private-load-evidence.sh \
+  "$OUTPUT" ROLE evidence/ROLE.manifest evidence/ROLE.log \
+  evidence/ROLE.resource.log \
+  ./build-stage7-private-load/onuros_stage7_private_load_node \
+  "$TLS/ROLE.crt" "$TLS/ca.crt"
+```
 
 ## Genesis synchronization and restart
 
@@ -114,6 +133,7 @@ late catch-up node. Use the same corpus, parameters, commits, CA, overlap, and
 producer data on both invocations:
 
 ```bash
+/usr/bin/time -v -o evidence/sender-a.resource.log \
 ./build-stage7-private-load/onuros_stage7_candidate_sync_node \
   --role sender --bind 0.0.0.0 --port 39448 --node-id producer-host \
   --data-dir "$HOME/onuros-stage7/producer" \
@@ -124,13 +144,15 @@ producer data on both invocations:
   --initial-commitments-sha256 "$INITIAL_COMMITMENTS_SHA" \
   --parameters-sha256 "$PARAMS_SHA" --blockchain-commit "$BLOCKCHAIN_SHA" \
   --privacy-lab-commit "$PRIVACY_LAB_SHA" --overlap 50 --workers 8 \
-  --manifest evidence/sender-a.manifest
+  --manifest evidence/sender-a.manifest \
+  2>&1 | tee evidence/sender-a.log
 ```
 
 On each of the other two physical hosts, after the matching sender prints
 `READY`:
 
 ```bash
+/usr/bin/time -v -o evidence/validator-a.resource.log \
 ./build-stage7-private-load/onuros_stage7_candidate_sync_node \
   --role receiver --address PRODUCER_IP --port 39448 \
   --node-id validator-a --receiver-id validator-a \
@@ -143,7 +165,8 @@ On each of the other two physical hosts, after the matching sender prints
   --parameters "$PARAMS" --parameters-sha256 "$PARAMS_SHA" \
   --blockchain-commit "$BLOCKCHAIN_SHA" \
   --privacy-lab-commit "$PRIVACY_LAB_SHA" --workers 8 \
-  --manifest evidence/validator-a.manifest
+  --manifest evidence/validator-a.manifest \
+  2>&1 | tee evidence/validator-a.log
 ```
 
 After both receivers exit successfully, stop the producer and disconnect its
@@ -151,6 +174,7 @@ network. On each receiver host run a new process with no address, port,
 certificate, key, or expected-peer argument:
 
 ```bash
+/usr/bin/time -v -o evidence/validator-a-restart.resource.log \
 ./build-stage7-private-load/onuros_stage7_candidate_sync_node \
   --role restart --node-id validator-a \
   --data-dir "$HOME/onuros-stage7/validator-a" --ca "$TLS/ca.crt" \
@@ -160,7 +184,8 @@ certificate, key, or expected-peer argument:
   --parameters "$PARAMS" --parameters-sha256 "$PARAMS_SHA" \
   --blockchain-commit "$BLOCKCHAIN_SHA" \
   --privacy-lab-commit "$PRIVACY_LAB_SHA" \
-  --manifest evidence/validator-a-restart.manifest
+  --manifest evidence/validator-a-restart.manifest \
+  2>&1 | tee evidence/validator-a-restart.log
 ```
 
 Validate both receiver and both separate-process restart manifests:
@@ -170,6 +195,12 @@ scripts/validate-stage7-performance-evidence.sh block \
   evidence/validator-a.manifest evidence/validator-b.manifest \
   evidence/validator-a-restart.manifest evidence/validator-b-restart.manifest
 ```
+
+Capture each receiver and restart result with the same capture script. Use
+`receiver` or `restart` as `ROLE`, the matching node log/resource log and the
+`onuros_stage7_candidate_sync_node` binary. The restart capture may hash the
+host's public node certificate even though the no-network restart process does
+not open or read it.
 
 The validator requires the same genesis hash, terminal block ID, initial
 candidate root, terminal Poseidon note root, parameter and corpus SHA-256,

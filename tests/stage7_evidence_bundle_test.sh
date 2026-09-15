@@ -13,9 +13,18 @@ ca_hash="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 write_host_manifest() {
   local directory="$1" pass_line="$2" selected_commit="${3:-$commit}"
-  local manifest_hash log_hash
+  local manifest_hash log_hash resource_hash
+  cat >"$directory/resource.log" <<EOF
+	User time (seconds): 10.00
+	System time (seconds): 1.00
+	Maximum resident set size (kbytes): 4096
+	File system inputs: 0
+	File system outputs: 8
+	Exit status: 0
+EOF
   manifest_hash="$(sha256sum "$directory/node-manifest.txt" | awk '{print $1}')"
   log_hash="$(sha256sum "$directory/node.log" | awk '{print $1}')"
+  resource_hash="$(sha256sum "$directory/resource.log" | awk '{print $1}')"
   cat >"$directory/host-manifest.txt" <<EOF
 commit=$selected_commit
 binary_sha256=$binary_hash
@@ -23,6 +32,7 @@ certificate_sha256=$certificate_hash
 ca_certificate_sha256=$ca_hash
 node_manifest_sha256=$manifest_hash
 node_log_sha256=$log_hash
+resource_log_sha256=$resource_hash
 private_keys_included=false
 $pass_line
 EOF
@@ -46,6 +56,14 @@ verification_tasks=66000
 verification_workers=8
 verification_pool_starts=1
 verification_seconds=550.000000
+admission_latency_sample=batch
+admission_latency_percentile=nearest-rank
+admission_latency_p50_ms=10.000000
+admission_latency_p95_ms=20.000000
+admission_latency_p99_ms=25.000000
+admission_latency_max_ms=30.000000
+application_bytes_sent=1000
+application_bytes_received=2000
 admitted_tps=110.000000
 divergent_transactions=0
 limits_exceeded=0
@@ -117,6 +135,9 @@ mempool_overlap_transactions=3000
 announcement_bytes=58168
 request_bytes=3728
 response_bytes=8300000
+durable_state_bytes=12000000
+file_sync_calls=8
+directory_sync_calls=3
 propagation_validation_seconds=29.999
 block_id=$block_id
 limits_exceeded=0
@@ -164,6 +185,9 @@ node_id=$receiver
 offline_restart=PASS
 network_attempted=false
 process_exit_status=0
+durable_state_bytes=12000000
+file_sync_calls=0
+directory_sync_calls=0
 tip=$block_id
 genesis=1111111111111111111111111111111111111111111111111111111111111111
 candidate_root=2222222222222222222222222222222222222222222222222222222222222222

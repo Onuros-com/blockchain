@@ -28,8 +28,9 @@ check_bundle() {
     fail "missing evidence directory: $directory"
   local node_manifest="$directory/node-manifest.txt"
   local node_log="$directory/node.log"
+  local resource_log="$directory/resource.log"
   local host_manifest="$directory/host-manifest.txt"
-  for file in "$node_manifest" "$node_log" "$host_manifest"; do
+  for file in "$node_manifest" "$node_log" "$resource_log" "$host_manifest"; do
     [[ -f "$file" && ! -L "$file" ]] || fail "missing regular file: $file"
   done
   if find "$directory" -type l -print -quit | grep -q .; then
@@ -48,7 +49,7 @@ check_bundle() {
   fi
 
   local role commit binary_hash certificate_hash ca_hash manifest_hash log_hash
-  local actual_manifest_hash actual_log_hash
+  local resource_hash actual_manifest_hash actual_log_hash actual_resource_hash
   role="$(field "$node_manifest" role)" || fail "invalid node role field"
   [[ "$role" == "$expected_role" ]] || \
     fail "expected role $expected_role, found $role"
@@ -64,17 +65,35 @@ check_bundle() {
     fail "missing node manifest hash"
   log_hash="$(field "$host_manifest" node_log_sha256)" || \
     fail "missing node log hash"
+  resource_hash="$(field "$host_manifest" resource_log_sha256)" || \
+    fail "missing resource log hash"
   require_hash "$binary_hash" "binary hash"
   require_hash "$certificate_hash" "certificate hash"
   require_hash "$ca_hash" "CA certificate hash"
   require_hash "$manifest_hash" "node manifest hash"
   require_hash "$log_hash" "node log hash"
+  require_hash "$resource_hash" "resource log hash"
   actual_manifest_hash="$(sha256sum "$node_manifest" | awk '{print $1}')"
   actual_log_hash="$(sha256sum "$node_log" | awk '{print $1}')"
+  actual_resource_hash="$(sha256sum "$resource_log" | awk '{print $1}')"
   [[ "$manifest_hash" == "$actual_manifest_hash" ]] || \
     fail "node manifest hash mismatch for $expected_role"
   [[ "$log_hash" == "$actual_log_hash" ]] || \
     fail "node log hash mismatch for $expected_role"
+  [[ "$resource_hash" == "$actual_resource_hash" ]] || \
+    fail "resource log hash mismatch for $expected_role"
+  grep -q '^[[:space:]]*User time (seconds): ' "$resource_log" || \
+    fail "missing user CPU time for $expected_role"
+  grep -q '^[[:space:]]*System time (seconds): ' "$resource_log" || \
+    fail "missing system CPU time for $expected_role"
+  grep -q '^[[:space:]]*Maximum resident set size (kbytes): ' "$resource_log" || \
+    fail "missing peak RSS for $expected_role"
+  grep -q '^[[:space:]]*File system inputs: ' "$resource_log" || \
+    fail "missing filesystem input count for $expected_role"
+  grep -q '^[[:space:]]*File system outputs: ' "$resource_log" || \
+    fail "missing filesystem output count for $expected_role"
+  grep -q '^[[:space:]]*Exit status: 0$' "$resource_log" || \
+    fail "resource log records process failure for $expected_role"
   [[ "$(field "$host_manifest" private_keys_included)" == "false" ]] || \
     fail "private-key declaration failed for $expected_role"
 

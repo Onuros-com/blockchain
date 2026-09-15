@@ -58,6 +58,14 @@ verification_tasks=
 verification_workers=
 verification_pool_starts=
 verification_seconds=
+admission_latency_sample=batch
+admission_latency_percentile=nearest-rank
+admission_latency_p50_ms=
+admission_latency_p95_ms=
+admission_latency_p99_ms=
+admission_latency_max_ms=
+application_bytes_sent=
+application_bytes_received=
 admitted_tps=
 divergent_transactions=
 ```
@@ -68,9 +76,13 @@ queue high-watermark must be non-zero, must not exceed `queue_limit`, and is
 measured from work actually submitted to the verifier pool; a constant or
 placeholder value is not evidence.
 
-The sender additionally records request latency percentiles and rejected
-submissions. Observers record the first and last accepted transaction IDs as
-hashes only.
+Every node records local batch-admission wall-clock latency. Percentiles use
+the nearest-rank rule over one sample per received payment batch; they are not
+per-payment or end-to-end confirmation latencies. Application byte counters
+cover complete encoded P2P frames before TLS overhead. Interface counters in
+the host resource record separately disclose operating-system network bytes.
+Rejected submissions are reported by the admission counters. Observers record
+the first and last accepted transaction IDs as hashes only.
 
 ### Pass conditions
 
@@ -109,6 +121,12 @@ Announce the block from one published node to two independent peers with the
 same TLS and source restrictions used by Gate 6. Both receivers start with the
 documented mempool overlap. Measure from receipt of the first valid block
 announcement to durable activation after full validation.
+
+Receiver manifests also report the logical bytes occupied by the block,
+shielded-state and commit-journal files, plus exact file and parent-directory
+synchronization-call counts from the application durability boundary. These
+counts do not estimate operating-system cache-flush latency or physical-media
+write amplification; host resource records disclose those separately.
 
 The initial private-testnet budget is 30.000 seconds at both receivers. Report
 the raw values and p50/p95 only when multiple blocks are tested. Confirmation

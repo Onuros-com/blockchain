@@ -23,6 +23,14 @@ verification_tasks=66000
 verification_workers=8
 verification_pool_starts=1
 verification_seconds=550.000000
+admission_latency_sample=batch
+admission_latency_percentile=nearest-rank
+admission_latency_p50_ms=10.000000
+admission_latency_p95_ms=20.000000
+admission_latency_p99_ms=25.000000
+admission_latency_max_ms=30.000000
+application_bytes_sent=1000
+application_bytes_received=2000
 admitted_tps=110.000000
 divergent_transactions=0
 limits_exceeded=0
@@ -66,6 +74,16 @@ if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
 fi
 sed -i -e 's/65999/66000/g' \
   -e 's/admitted_tps=109.998333/admitted_tps=110.000000/' "$work/c.relay"
+
+sed -i 's/^admission_latency_p99_ms=25.000000$/admission_latency_p99_ms=31.000000/' \
+  "$work/c.relay"
+if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
+    "$work/c.relay" >/dev/null 2>&1; then
+  echo "validator accepted non-monotonic latency percentiles" >&2
+  exit 1
+fi
+sed -i 's/^admission_latency_p99_ms=31.000000$/admission_latency_p99_ms=25.000000/' \
+  "$work/c.relay"
 
 sed -i 's/^queue_high_watermark=32$/queue_high_watermark=0/' "$work/c.relay"
 if bash "$validator" relay "$work/a.relay" "$work/b.relay" \
@@ -115,6 +133,9 @@ mempool_overlap_transactions=3000
 announcement_bytes=58168
 request_bytes=3728
 response_bytes=8300000
+durable_state_bytes=12000000
+file_sync_calls=8
+directory_sync_calls=3
 propagation_validation_seconds=29.999
 block_id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 limits_exceeded=0
@@ -156,6 +177,9 @@ node_id=$receiver
 offline_restart=PASS
 network_attempted=false
 process_exit_status=0
+durable_state_bytes=12000000
+file_sync_calls=0
+directory_sync_calls=0
 tip=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 genesis=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 candidate_root=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
