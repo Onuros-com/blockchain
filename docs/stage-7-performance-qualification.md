@@ -22,18 +22,18 @@ growth, relay, or settlement.
 ### Topology
 
 Run three published nodes on independent machines in at least two network
-locations. Use the production Orchard admission composition and mutually
-authenticated TLS. Each node must use an isolated database and its own
-certificate identity.
+locations. Use the candidate-linked Groth16/Poseidon Privacy Engine admission
+composition and mutually authenticated TLS. Each node must use an isolated
+database and its own certificate identity.
 
 ### Workload
 
-Submit at least 100 distinct, valid private transactions per second for 600
-continuous seconds. The minimum accepted workload is therefore 60,000
-transactions. Every transaction must have a distinct canonical transaction ID
-and must pass the pinned Orchard verifier. Replaying one fixture, modifying
-bytes after proof creation, or substituting the deterministic test verifier
-invalidates the run.
+Submit 110 distinct, valid 584-byte private payments per second for at least
+600 continuous seconds. The minimum accepted workload is therefore 66,000
+payments. Every payment must have a distinct canonical transaction ID and must
+pass the pinned Privacy Engine Groth16 verifier. Replaying one fixture,
+modifying bytes after proof creation, or substituting the deterministic test
+verifier invalidates the run.
 
 Generate proofs before the timed interval unless proof construction is
 explicitly part of the measured client workload. Record which choice was used.
@@ -75,6 +75,7 @@ hashes only.
 ### Pass conditions
 
 - measured duration is at least 600 seconds;
+- every node admits and relays at least 66,000 unique payments;
 - sender admission rate is at least 100.000 unique valid transactions/s;
 - all three nodes contain the same admitted transaction-ID set;
 - `divergent_transactions=0`;
