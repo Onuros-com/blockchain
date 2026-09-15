@@ -14,10 +14,10 @@ audit points.
 | 3. Restart and late synchronization | Three-process gate restarts a persisted client and checks height/tip recovery; state coordinator tests recover shielded state | Automated gate passed |
 | 4. Competing branches converge by work | Chain-index tests and private commit coordinator tests cover a stronger-branch reorganization and restart after the block database switches | Automated gate passed |
 | 5. Malformed, oversized and flooding traffic remains bounded | Frame decoder, event loop, admission, block transfer, fuzz, per-tick flood, sanitizer, and peer-policy tests in run 34704080168 | Automated gate passed |
-| 6. 100 unique valid private transactions/s for 600 s across three published nodes | Real Orchard fixture verification sustained 120.218/s for 600.033 s; the real-FFI/TLS load executable and common-anchor corpus generator are implemented | Tooling implemented; physical 66,000-transaction run pending |
+| 6. 100 unique valid private transactions/s for 600 s across three published nodes | The 2026-09-13 physical run admitted the same 66,000 unique transactions on all three roles at 100.115120, 100.135906, and 100.161837 TPS | Physical numerical gate passed; observer host capture remains for the immutable bundle |
 | 7. Near-16 MiB safety-bound propagation and validation | `stage7_block_limit` passed in run 34704080168; the real-FFI/TLS compact-block sender and durable receiver are implemented | Tooling implemented; physical run held for the agreed scalability and storage policy |
 | 8. Crash-safe shutdown, restart and synchronization | Checksummed commit journal, durable ordering, corrupt-journal rejection, reorg recovery, event-loop clean shutdown | Automated gate passed |
-| 9. Protocol, threat model, operator procedure and raw evidence | Networking specification, recovery design, threat model, independent TLS runbook, performance qualification, and GCP verifier log are committed | Documentation present; physical Gate 6/7 evidence pending |
+| 9. Protocol, threat model, operator procedure and raw evidence | Networking specification, recovery design, threat model, independent TLS runbook, performance qualification, and the 2026-09-13 Gate 6 qualification record are committed | Documentation present; final Gate 6 bundle and physical Gate 7 evidence pending |
 
 ## Automated workflow references
 
@@ -80,6 +80,17 @@ commit `6bbbd01b3a007ae02f34b83b3e6a1bfd8ba02e97` is stored in
 This is verifier capacity using a repeated valid fixture. It is not unique
 transaction relay or settlement evidence.
 
+### Physical private-relay qualification
+
+[The 2026-09-13 physical private-relay qualification](evidence/stage7-private-relay-qualification-20260913.md)
+records 66,000 distinct transactions admitted by all three independent roles.
+The slowest measured role sustained 100.115120 admitted transactions/s for
+659.241079 seconds. All roles recorded the same transaction-set SHA-256, zero
+duplicates, zero invalid transactions, zero divergence, zero limit failures,
+and exit status zero. The numerical validator passed. Origin and relay immutable
+captures are complete; the observer manifest and log are preserved, with its
+host capture pending.
+
 ### Physical GPU mining
 
 The separate `Onuros-com/Onuros-miner` repository contains:
@@ -128,21 +139,14 @@ replace Stage 7 network Gates 6 or 7.
   near-limit reconstruction/validation regression.
 - `docs/stage-7-performance-qualification.md`: physical Gate 6 and Gate 7
   evidence contract.
+- `docs/stage-7-physical-completion-checklist.md`: consolidated physical-gate
+  status, evidence safety boundary and final acceptance sequence.
 
 ## Evidence still required
 
-1. Three-node, 600-second manifests for at least 60,000 distinct transactions
-   that pass the real Orchard verifier.
-2. Published-node near-limit block logs showing canonical size, mempool overlap,
-   transfer bytes, independent validation, durable activation, restart state,
-   and no more than 30.000 seconds per receiver.
-3. Reviewer audit points and their resolution links.
-
-## Evidence still required
-
-1. Three-node, 600-second manifests for at least 60,000 distinct transactions
-   that pass the real Orchard verifier.
-2. Published-node near-limit block logs showing canonical size, mempool overlap,
-   transfer bytes, independent validation, durable activation, restart state,
-   and no more than 30.000 seconds per receiver.
+1. Capture the preserved observer Gate 6 manifest and log with the original RTX
+   4070 host metadata, then pass the immutable three-host bundle validator.
+2. Published-node near-limit block logs showing one common block ID, canonical
+   size, mempool overlap, transfer bytes, independent validation, durable
+   activation, restart state, and no more than 30.000 seconds per receiver.
 3. Reviewer audit points and their resolution links.
