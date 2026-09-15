@@ -24,6 +24,8 @@ rg -q 'proof_system=groth16-bls12-381' \
 rg -q 'commitment_hash=poseidon' \
   "$repo_dir/apps/stage7_private_load_node.cpp"
 rg -q 'ONUROS_PRIVACY_ENGINE_LIBRARY' "$repo_dir/CMakeLists.txt"
+rg -q 'Onuros-com/Onuros-privacy-lab' \
+  "$repo_dir/.github/workflows/privacy-engine-bridge.yml"
 rg -q 'active_privacy_protocol_qualified=false' \
   "$repo_dir/docs/evidence/stage7-gcp-orchard-duration-20260912.txt"
 rg -q 'superseded-historical' \
