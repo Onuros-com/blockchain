@@ -31,6 +31,7 @@ constexpr std::array<std::uint8_t, 8> corpus_magic{
     'O', 'N', 'U', 'R', 'C', 'R', 'P', '1'};
 constexpr std::array<std::uint8_t, 8> initial_commitments_magic{
     'O', 'N', 'U', 'R', 'I', 'N', 'I', '1'};
+constexpr std::size_t candidate_shielded_max_entries = 1'000'000U;
 constexpr std::uint32_t corpus_version = 1U;
 constexpr std::array<std::uint8_t, 4> control_magic{'B', 'L', 'K', '1'};
 constexpr std::size_t maximum_io_attempts = 3'600'000U;
@@ -622,7 +623,7 @@ void run_sender(const Options& options) {
         throw std::runtime_error("producer genesis activation failed");
     PersistentShieldedState shielded(
         block_id(built.genesis.header), built.anchor, initial_commitments,
-        64U * 1024U * 1024U, 100'000U);
+        64U * 1024U * 1024U, candidate_shielded_max_entries);
     if (shielded.open(shielded_path) != ShieldedStoreError::none)
         throw std::runtime_error("producer shielded state open failed");
     PrivateNodeCommitCoordinator coordinator(
@@ -833,7 +834,7 @@ ReceiverResult receive_block(FramedTls& sender, const Options& options,
             throw std::runtime_error("receiver genesis activation failed");
         PersistentShieldedState shielded(
             block_id(genesis.header), anchor, initial_commitments,
-            64U * 1024U * 1024U, 100'000U);
+            64U * 1024U * 1024U, candidate_shielded_max_entries);
         if (shielded.open(shielded_path) != ShieldedStoreError::none)
             throw std::runtime_error("receiver shielded state open failed");
         PrivateNodeCommitCoordinator coordinator(
@@ -852,7 +853,7 @@ ReceiverResult receive_block(FramedTls& sender, const Options& options,
             throw std::runtime_error("receiver block restart recovery failed");
         PersistentShieldedState shielded(
             block_id(genesis.header), anchor, initial_commitments,
-            64U * 1024U * 1024U, 100'000U);
+            64U * 1024U * 1024U, candidate_shielded_max_entries);
         if (shielded.open(shielded_path) != ShieldedStoreError::none ||
             shielded.state().tip() != block_id(block.header) ||
             shielded.state().root() != block.header.shielded_root ||
@@ -967,7 +968,7 @@ void run_restart(const Options& options) {
         throw std::runtime_error("offline block restart failed");
     PersistentShieldedState shielded(
         block_id(genesis.header), corpus.anchor(), initial_commitments,
-        64U * 1024U * 1024U, 100'000U);
+        64U * 1024U * 1024U, candidate_shielded_max_entries);
     if (shielded.open(shielded_path) != ShieldedStoreError::none)
         throw std::runtime_error("offline shielded restart failed");
     const auto* tip = node.store().index().active_tip();
