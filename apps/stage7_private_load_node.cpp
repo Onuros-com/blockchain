@@ -1,4 +1,4 @@
-#include "onuros/stage7_orchard_network.hpp"
+#include "onuros/privacy_engine_network.hpp"
 #include "onuros/tls_transport.hpp"
 
 #include <algorithm>
@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -23,7 +24,9 @@ namespace {
 using namespace onuros;
 using Clock = std::chrono::steady_clock;
 
-constexpr std::array<std::uint8_t, 4> corpus_magic{'O', 'N', 'C', '1'};
+constexpr std::array<std::uint8_t, 8> corpus_magic{
+    'O', 'N', 'U', 'R', 'C', 'R', 'P', '1'};
+constexpr std::uint32_t corpus_version = 1U;
 constexpr std::array<std::uint8_t, 4> start_magic{'L', 'O', 'A', 'D'};
 constexpr std::array<std::uint8_t, 4> finish_magic{'D', 'O', 'N', 'E'};
 constexpr std::array<std::uint8_t, 4> summary_magic{'S', 'U', 'M', '1'};
@@ -50,6 +53,11 @@ void append_u64(std::vector<std::uint8_t>& output, std::uint64_t value) {
         output.push_back(static_cast<std::uint8_t>(value >> (8U * index)));
 }
 
+void append_u32(std::vector<std::uint8_t>& output, std::uint32_t value) {
+    for (std::size_t index = 0U; index < sizeof(value); ++index)
+        output.push_back(static_cast<std::uint8_t>(value >> (8U * index)));
+}
+
 std::uint64_t read_u64(const std::vector<std::uint8_t>& input,
                        std::size_t offset) {
     if (offset > input.size() || input.size() - offset < sizeof(std::uint64_t))
@@ -57,6 +65,17 @@ std::uint64_t read_u64(const std::vector<std::uint8_t>& input,
     std::uint64_t result = 0U;
     for (std::size_t index = 0U; index < sizeof(result); ++index)
         result |= static_cast<std::uint64_t>(input[offset + index]) <<
+                  (8U * index);
+    return result;
+}
+
+std::uint32_t read_u32(const std::vector<std::uint8_t>& input,
+                       std::size_t offset) {
+    if (offset > input.size() || input.size() - offset < sizeof(std::uint32_t))
+        throw std::runtime_error("truncated control value");
+    std::uint32_t result = 0U;
+    for (std::size_t index = 0U; index < sizeof(result); ++index)
+        result |= static_cast<std::uint32_t>(input[offset + index]) <<
                   (8U * index);
     return result;
 }
@@ -71,23 +90,40 @@ struct StartControl {
     std::uint64_t transactions = 0U;
     std::uint64_t duration_seconds = 0U;
     Hash256 anchor{};
+    Hash256 parameter_sha256{};
+    std::uint32_t network_id = 0U;
+    std::uint32_t circuit_version = 0U;
+    std::uint32_t root_height = 0U;
+    std::uint32_t max_root_age = 0U;
 };
 
 std::vector<std::uint8_t> encode_start(const StartControl& start) {
     std::vector<std::uint8_t> output(start_magic.begin(), start_magic.end());
     append_u64(output, start.transactions);
     append_u64(output, start.duration_seconds);
+    append_u32(output, start.network_id);
+    append_u32(output, start.circuit_version);
+    append_u32(output, start.root_height);
+    append_u32(output, start.max_root_age);
     output.insert(output.end(), start.anchor.begin(), start.anchor.end());
+    output.insert(output.end(), start.parameter_sha256.begin(),
+                  start.parameter_sha256.end());
     return output;
 }
 
 StartControl decode_start(const std::vector<std::uint8_t>& input) {
-    if (!begins_with(input, start_magic) || input.size() != 52U)
+    if (!begins_with(input, start_magic) || input.size() != 100U)
         throw std::runtime_error("invalid load start control");
     StartControl result;
     result.transactions = read_u64(input, 4U);
     result.duration_seconds = read_u64(input, 12U);
-    std::copy(input.begin() + 20, input.end(), result.anchor.begin());
+    result.network_id = read_u32(input, 20U);
+    result.circuit_version = read_u32(input, 24U);
+    result.root_height = read_u32(input, 28U);
+    result.max_root_age = read_u32(input, 32U);
+    std::copy(input.begin() + 36, input.begin() + 68, result.anchor.begin());
+    std::copy(input.begin() + 68, input.end(),
+              result.parameter_sha256.begin());
     if (result.transactions == 0U || result.duration_seconds == 0U)
         throw std::runtime_error("empty load parameters");
     return result;
@@ -151,6 +187,8 @@ class CorpusReader {
     std::ifstream input_;
     std::uint64_t count_ = 0U;
     Hash256 anchor_{};
+    std::uint32_t network_id_ = 0U;
+    std::uint32_t circuit_version_ = 0U;
     std::uint64_t consumed_ = 0U;
 
     template <typename Integer>
@@ -167,31 +205,36 @@ class CorpusReader {
 public:
     explicit CorpusReader(const std::filesystem::path& path)
         : input_(path, std::ios::binary) {
-        std::array<std::uint8_t, 4> magic{};
+        std::array<std::uint8_t, 8> magic{};
         input_.read(reinterpret_cast<char*>(magic.data()), magic.size());
         if (!input_ || magic != corpus_magic)
-            throw std::runtime_error("invalid Orchard corpus magic");
-        count_ = read_little<std::uint64_t>();
+            throw std::runtime_error("invalid Onuros corpus magic");
+        if (read_little<std::uint32_t>() != corpus_version)
+            throw std::runtime_error("unsupported Onuros corpus version");
+        count_ = read_little<std::uint32_t>();
+        network_id_ = read_little<std::uint32_t>();
+        circuit_version_ = read_little<std::uint32_t>();
         input_.read(reinterpret_cast<char*>(anchor_.data()), anchor_.size());
         if (!input_ || count_ == 0U)
-            throw std::runtime_error("invalid Orchard corpus header");
+            throw std::runtime_error("invalid Onuros corpus header");
     }
 
     std::uint64_t count() const noexcept { return count_; }
     const Hash256& anchor() const noexcept { return anchor_; }
+    std::uint32_t network_id() const noexcept { return network_id_; }
+    std::uint32_t circuit_version() const noexcept {
+        return circuit_version_;
+    }
 
     std::vector<TransactionEnvelope> read_batch(std::size_t maximum) {
         std::vector<TransactionEnvelope> result;
         result.reserve(maximum);
         while (result.size() < maximum && consumed_ < count_) {
-            const auto length = read_little<std::uint32_t>();
-            if (length == 0U || length > 64U * 1024U)
-                throw std::runtime_error("invalid corpus transaction length");
-            std::vector<std::uint8_t> body(length);
+            std::vector<std::uint8_t> body(onuros_private_payment_bytes);
             input_.read(reinterpret_cast<char*>(body.data()), body.size());
             if (!input_) throw std::runtime_error("truncated corpus transaction");
             result.push_back(
-                {private_transaction_envelope_version, std::move(body)});
+                {onuros_private_payment_envelope_version, std::move(body)});
             ++consumed_;
         }
         return result;
@@ -296,22 +339,26 @@ TcpConnection connect_connection(const std::string& address,
     throw std::runtime_error("peer connect timeout");
 }
 
-std::unique_ptr<OrchardNetworkAdmission> make_admission(
-        const ShieldedState& state, std::uint64_t transactions) {
+std::unique_ptr<PrivacyEngineNetworkAdmission> make_admission(
+        const ShieldedState& state, std::uint64_t transactions,
+        const onuros_privacy_engine_v1* engine,
+        const onuros_accepted_root_v1& root,
+        std::uint32_t chain_height, std::uint32_t max_root_age) {
     constexpr std::size_t maximum_bytes = 2ULL * 1024ULL * 1024ULL * 1024ULL;
     const auto maximum_transactions = static_cast<std::size_t>(transactions);
     if (transactions > 1'000'000U ||
         maximum_transactions > std::numeric_limits<std::size_t>::max() - 64U)
         throw std::runtime_error("load transaction limit exceeded");
-    return std::make_unique<OrchardNetworkAdmission>(
-        state,
-        PrivateBundleLimits{64U * 1024U, 4U, 16U * 1024U},
+    return std::make_unique<PrivacyEngineNetworkAdmission>(
+        engine, std::vector<onuros_accepted_root_v1>{root}, chain_height,
+        max_root_age, state,
         PrivateMempoolLimits{maximum_transactions + 64U, maximum_bytes,
                              (maximum_transactions + 64U) * 4U,
-                             64U * 1024U, 4U},
+                             onuros_private_payment_bytes, 2U},
         maximum_transactions + 64U, maximum_bytes,
         Stage7NodeAdmission::BlockAdmission{},
-        NetworkTransactionBatchLimits{256U * 1024U, 32U, 64U * 1024U});
+        NetworkTransactionBatchLimits{256U * 1024U, 32U,
+                                      onuros_private_payment_bytes});
 }
 
 struct RunStats {
@@ -334,6 +381,17 @@ struct RunStats {
     Hash256 first{};
     Hash256 last{};
     std::string cipher;
+    Hash256 genesis{};
+    Hash256 candidate_root{};
+    Hash256 parameter_sha256{};
+    Hash256 tls_ca_sha256{};
+    std::uint32_t network_id = 0U;
+    std::uint32_t circuit_version = 0U;
+    std::uint32_t root_height = 0U;
+    std::string blockchain_commit;
+    std::string privacy_lab_commit;
+    std::string node_id;
+    bool loopback = true;
 };
 
 void write_manifest(const std::filesystem::path& path, const RunStats& stats) {
@@ -363,7 +421,26 @@ void write_manifest(const std::filesystem::path& path, const RunStats& stats) {
            << '\n'
            << "divergent_transactions=" << stats.divergent << '\n'
            << "limits_exceeded=0\n"
-           << "verification_backend=orchard-ffi\n"
+           << "payment_bytes=584\n"
+           << "proof_system=groth16-bls12-381\n"
+           << "commitment_hash=poseidon\n"
+           << "verification_backend=onuros-privacy-engine-abi-v1\n"
+           << "tracked_witness_backend=onuros-privacy-engine-abi-v2\n"
+           << "qualification_profile=groth16-poseidon-payment-relay-v1\n"
+           << "active_privacy_protocol_qualified=true\n"
+           << "genesis_sync_qualified=false\n"
+           << "network_id=" << stats.network_id << '\n'
+           << "circuit_version=" << stats.circuit_version << '\n'
+           << "root_height=" << stats.root_height << '\n'
+           << "genesis=" << hash_hex(stats.genesis) << '\n'
+           << "candidate_root=" << hash_hex(stats.candidate_root) << '\n'
+           << "parameters_sha256=" << hash_hex(stats.parameter_sha256) << '\n'
+           << "tls_ca_sha256=" << hash_hex(stats.tls_ca_sha256) << '\n'
+           << "blockchain_commit=" << stats.blockchain_commit << '\n'
+           << "privacy_lab_commit=" << stats.privacy_lab_commit << '\n'
+           << "node_id=" << stats.node_id << '\n'
+           << "loopback=" << (stats.loopback ? "true" : "false") << '\n'
+           << "transport_authenticated=true\n"
            << "process_exit_status=0\n"
            << "private_payloads_logged=false\n"
            << "id_set_sha256=" << hash_hex(stats.id_set) << '\n'
@@ -386,11 +463,44 @@ struct Options {
     std::string expected_relay;
     std::filesystem::path corpus;
     std::filesystem::path manifest;
+    std::filesystem::path parameters;
+    Hash256 parameter_sha256{};
+    Hash256 root{};
+    std::uint32_t network_id = 0U;
+    std::uint32_t circuit_version = 0U;
+    std::uint32_t root_height = 0U;
+    std::uint32_t max_root_age = 100U;
+    std::string blockchain_commit;
+    std::string privacy_lab_commit;
+    std::string node_id;
     std::uint64_t duration = 600U;
     std::uint64_t rate = 110U;
     std::size_t batch = 16U;
     std::size_t workers = 4U;
 };
+
+Hash256 hex_hash(const std::string& input, const std::string& name) {
+    if (input.size() != 64U)
+        throw std::runtime_error(name + " must be 64 hexadecimal characters");
+    Hash256 result{};
+    for (std::size_t index = 0U; index < result.size(); ++index) {
+        const auto text = input.substr(index * 2U, 2U);
+        std::size_t parsed = 0U;
+        const auto value = std::stoul(text, &parsed, 16);
+        if (parsed != 2U || value > 255U)
+            throw std::runtime_error("invalid " + name);
+        result[index] = static_cast<std::uint8_t>(value);
+    }
+    return result;
+}
+
+bool commit_identity(const std::string& value) {
+    if (value.size() != 40U) return false;
+    return std::all_of(value.begin(), value.end(), [](unsigned char byte) {
+        return (byte >= '0' && byte <= '9') ||
+               (byte >= 'a' && byte <= 'f');
+    });
+}
 
 std::string argument(int argc, char** argv, const std::string& name,
                      const std::string& fallback = {}) {
@@ -427,6 +537,21 @@ Options parse_options(int argc, char** argv) {
     options.expected_relay = argument(argc, argv, "--expected-relay");
     options.corpus = argument(argc, argv, "--corpus");
     options.manifest = argument(argc, argv, "--manifest");
+    options.parameters = argument(argc, argv, "--parameters");
+    options.parameter_sha256 = hex_hash(
+        argument(argc, argv, "--parameters-sha256"), "parameters-sha256");
+    options.root = hex_hash(argument(argc, argv, "--root"), "root");
+    options.network_id = static_cast<std::uint32_t>(
+        number_argument(argc, argv, "--network-id", 0U));
+    options.circuit_version = static_cast<std::uint32_t>(
+        number_argument(argc, argv, "--circuit-version", 0U));
+    options.root_height = static_cast<std::uint32_t>(
+        number_argument(argc, argv, "--root-height", 0U));
+    options.max_root_age = static_cast<std::uint32_t>(number_argument(
+        argc, argv, "--max-root-age", options.max_root_age));
+    options.blockchain_commit = argument(argc, argv, "--blockchain-commit");
+    options.privacy_lab_commit = argument(argc, argv, "--privacy-lab-commit");
+    options.node_id = argument(argc, argv, "--node-id");
     options.duration = number_argument(argc, argv, "--duration", options.duration);
     options.rate = number_argument(argc, argv, "--rate", options.rate);
     options.batch = static_cast<std::size_t>(
@@ -435,10 +560,79 @@ Options parse_options(int argc, char** argv) {
         number_argument(argc, argv, "--workers", options.workers));
     if (options.role.empty() || options.certificate.empty() ||
         options.private_key.empty() || options.ca.empty() ||
-        options.manifest.empty() || options.batch > 32U ||
+        options.manifest.empty() || options.parameters.empty() ||
+        options.network_id == 0U || options.circuit_version == 0U ||
+        options.root_height == 0U ||
+        !commit_identity(options.blockchain_commit) ||
+        !commit_identity(options.privacy_lab_commit) ||
+        options.node_id.empty() || options.batch > 32U ||
         options.workers > 256U)
         throw std::runtime_error("missing or out-of-range load option");
     return options;
+}
+
+Hash256 file_sha256(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("identity file open failed");
+    std::vector<std::uint8_t> bytes(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>());
+    return sha256(bytes);
+}
+
+RunStats stamp_identity(RunStats stats, const Options& options) {
+    stats.genesis = value(1U);
+    stats.candidate_root = options.root;
+    stats.parameter_sha256 = options.parameter_sha256;
+    stats.tls_ca_sha256 = file_sha256(options.ca);
+    stats.network_id = options.network_id;
+    stats.circuit_version = options.circuit_version;
+    stats.root_height = options.root_height;
+    stats.blockchain_commit = options.blockchain_commit;
+    stats.privacy_lab_commit = options.privacy_lab_commit;
+    stats.node_id = options.node_id;
+    const auto endpoint = options.role == "relay" ? options.bind : options.address;
+    stats.loopback = endpoint == "127.0.0.1" || endpoint == "localhost";
+    return stats;
+}
+
+using EnginePtr = std::unique_ptr<onuros_privacy_engine_v1,
+                                  void (*)(onuros_privacy_engine_v1*)>;
+
+onuros_accepted_root_v1 accepted_root(const Options& options) {
+    onuros_accepted_root_v1 root{};
+    root.height = options.root_height;
+    std::copy(options.root.begin(), options.root.end(), std::begin(root.root));
+    return root;
+}
+
+EnginePtr open_engine(const Options& options) {
+    if (onuros_privacy_engine_abi_version() != 1U ||
+        onuros_privacy_engine_payment_bytes_v1() !=
+            onuros_private_payment_bytes)
+        throw std::runtime_error("unsupported Privacy Engine ABI");
+    const auto root = accepted_root(options);
+    onuros_privacy_status_v1 status = ONUROS_PRIVACY_INTERNAL_PANIC;
+    auto* engine = onuros_privacy_engine_open_roots_v1(
+        options.parameters.string().c_str(), options.network_id,
+        options.circuit_version, &root, 1U, options.parameter_sha256.data(),
+        &status);
+    if (engine == nullptr || status != ONUROS_PRIVACY_OK) {
+        if (engine != nullptr) onuros_privacy_engine_close_v1(engine);
+        throw std::runtime_error("Privacy Engine open failed: " +
+                                 std::to_string(static_cast<int>(status)));
+    }
+    return {engine, &onuros_privacy_engine_close_v1};
+}
+
+void require_control(const StartControl& control, const Options& options) {
+    if (control.network_id != options.network_id ||
+        control.circuit_version != options.circuit_version ||
+        control.root_height != options.root_height ||
+        control.max_root_age != options.max_root_age ||
+        control.anchor != options.root ||
+        control.parameter_sha256 != options.parameter_sha256)
+        throw std::runtime_error("peer candidate identity mismatch");
 }
 
 void record_ids(const std::vector<TransactionEnvelope>& transactions,
@@ -447,22 +641,22 @@ void record_ids(const std::vector<TransactionEnvelope>& transactions,
         identifiers.push_back(transaction_id(transaction));
 }
 
-void require_admitted(OrchardNetworkAdmission& admission,
+void require_admitted(PrivacyEngineNetworkAdmission& admission,
                       const P2pFrame& frame, std::size_t workers,
                       std::vector<Hash256>& identifiers) {
     const auto decoded = decode_network_transactions(
-        frame.payload, {256U * 1024U, 32U, 64U * 1024U});
+        frame.payload, {256U * 1024U, 32U, onuros_private_payment_bytes});
     if (!decoded.accepted()) throw std::runtime_error("transaction decode failed");
     const auto result = admission.handle_frame_parallel(frame, workers);
     if (!result || !result->accepted() ||
         result->accepted_transactions != decoded.transactions.size())
-        throw std::runtime_error("Orchard transaction admission failed");
+        throw std::runtime_error("Privacy Engine transaction admission failed");
     record_ids(decoded.transactions, identifiers);
 }
 
 RunStats complete_stats(const std::string& role, Clock::time_point started,
                         std::uint64_t submitted,
-                        const OrchardNetworkAdmission& admission,
+                        const PrivacyEngineNetworkAdmission& admission,
                         const std::vector<Hash256>& identifiers,
                         std::uint64_t divergent, const char* cipher) {
     if (identifiers.empty()) throw std::runtime_error("empty transaction set");
@@ -511,8 +705,12 @@ RunStats run_observer(const Options& options) {
     if (start_frame.type != P2pMessageType::ping)
         throw std::runtime_error("observer expected start control");
     const auto control = decode_start(start_frame.payload);
-    const ShieldedState state(value(1U), control.anchor);
-    auto admission = make_admission(state, control.transactions);
+    require_control(control, options);
+    auto engine = open_engine(options);
+    const ShieldedState state(value(1U), options.root);
+    auto admission = make_admission(
+        state, control.transactions, engine.get(), accepted_root(options),
+        options.root_height, options.max_root_age);
     std::vector<Hash256> identifiers;
     identifiers.reserve(static_cast<std::size_t>(control.transactions));
     const auto started = Clock::now();
@@ -530,8 +728,9 @@ RunStats run_observer(const Options& options) {
     const Summary summary{identifiers.size(), id_set_hash(identifiers)};
     relay.send({stage7_protocol_version, P2pMessageType::pong, 4U,
                 encode_summary(summary)});
-    return complete_stats("observer", started, identifiers.size(),
-                          *admission, identifiers, 0U, relay.cipher());
+    return stamp_identity(complete_stats(
+        "observer", started, identifiers.size(), *admission, identifiers,
+        0U, relay.cipher()), options);
 }
 
 RunStats run_relay(const Options& options) {
@@ -561,9 +760,13 @@ RunStats run_relay(const Options& options) {
     if (start_frame.type != P2pMessageType::ping)
         throw std::runtime_error("relay expected start control");
     const auto control = decode_start(start_frame.payload);
+    require_control(control, options);
     observer.send(start_frame);
-    const ShieldedState state(value(1U), control.anchor);
-    auto admission = make_admission(state, control.transactions);
+    auto engine = open_engine(options);
+    const ShieldedState state(value(1U), options.root);
+    auto admission = make_admission(
+        state, control.transactions, engine.get(), accepted_root(options),
+        options.root_height, options.max_root_age);
     std::vector<Hash256> identifiers;
     identifiers.reserve(static_cast<std::size_t>(control.transactions));
     const auto started = Clock::now();
@@ -589,8 +792,9 @@ RunStats run_relay(const Options& options) {
         relay_summary.id_set != observer_summary.id_set ? 1U : 0U;
     origin.send({stage7_protocol_version, P2pMessageType::pong, 4U,
                  encode_relay_summary(relay_summary, observer_summary)});
-    return complete_stats("relay", started, identifiers.size(), *admission,
-                          identifiers, divergent, origin.cipher());
+    return stamp_identity(complete_stats(
+        "relay", started, identifiers.size(), *admission, identifiers,
+        divergent, origin.cipher()), options);
 }
 
 RunStats run_origin(const Options& options) {
@@ -603,7 +807,12 @@ RunStats run_origin(const Options& options) {
     const auto target = options.rate * options.duration;
     CorpusReader corpus(options.corpus);
     if (corpus.count() < target)
-        throw std::runtime_error("Orchard corpus is smaller than workload");
+        throw std::runtime_error("Onuros corpus is smaller than workload");
+    if (corpus.network_id() != options.network_id ||
+        corpus.circuit_version() != options.circuit_version ||
+        corpus.anchor() != options.root)
+        throw std::runtime_error("corpus candidate identity mismatch");
+    auto engine = open_engine(options);
     auto context = TlsContext::mutual(
         options.certificate.string(), options.private_key.string(),
         options.ca.string());
@@ -616,11 +825,21 @@ RunStats run_origin(const Options& options) {
     const auto ready = relay.receive();
     if (ready.type != P2pMessageType::pong || ready.request_id != 2U)
         throw std::runtime_error("origin expected relay readiness");
-    const ShieldedState state(value(1U), corpus.anchor());
-    auto admission = make_admission(state, target);
+    const ShieldedState state(value(1U), options.root);
+    auto admission = make_admission(
+        state, target, engine.get(), accepted_root(options),
+        options.root_height, options.max_root_age);
     std::vector<Hash256> identifiers;
     identifiers.reserve(static_cast<std::size_t>(target));
-    const StartControl control{target, options.duration, corpus.anchor()};
+    StartControl control;
+    control.transactions = target;
+    control.duration_seconds = options.duration;
+    control.anchor = options.root;
+    control.parameter_sha256 = options.parameter_sha256;
+    control.network_id = options.network_id;
+    control.circuit_version = options.circuit_version;
+    control.root_height = options.root_height;
+    control.max_root_age = options.max_root_age;
     relay.send({stage7_protocol_version, P2pMessageType::ping, 3U,
                 encode_start(control)});
     const auto started = Clock::now();
@@ -631,7 +850,7 @@ RunStats run_origin(const Options& options) {
             options.batch, target - submitted));
         auto transactions = corpus.read_batch(wanted);
         if (transactions.size() != wanted)
-            throw std::runtime_error("Orchard corpus ended early");
+            throw std::runtime_error("Onuros corpus ended early");
         P2pFrame frame{stage7_protocol_version, P2pMessageType::transactions,
                        request_id++, encode_network_transactions(transactions)};
         require_admitted(*admission, frame, options.workers, identifiers);
@@ -658,8 +877,9 @@ RunStats run_origin(const Options& options) {
         local.id_set != relay_summary.id_set ||
         local.transactions != observer_summary.transactions ||
         local.id_set != observer_summary.id_set ? 1U : 0U;
-    return complete_stats("origin", started, submitted, *admission,
-                          identifiers, divergent, relay.cipher());
+    return stamp_identity(complete_stats(
+        "origin", started, submitted, *admission, identifiers, divergent,
+        relay.cipher()), options);
 }
 
 void usage(const char* program) {
@@ -670,7 +890,11 @@ void usage(const char* program) {
         << " [--duration 600 --rate 110 --batch 16 --workers 4]\n"
         << "  relay: --bind ADDRESS --expected-origin DNS"
         << " --expected-observer DNS [--workers 4]\n"
-        << "  observer: --address HOST --expected-relay DNS [--workers 4]\n";
+        << "  observer: --address HOST --expected-relay DNS [--workers 4]\n"
+        << "  all roles: --parameters FILE --parameters-sha256 HEX"
+        << " --network-id N --circuit-version N --root-height N --root HEX"
+        << " --blockchain-commit SHA --privacy-lab-commit SHA"
+        << " --node-id UNIQUE-HOST-ID\n";
 }
 } // namespace
 

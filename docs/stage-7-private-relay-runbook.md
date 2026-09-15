@@ -1,5 +1,8 @@
 # Stage 7 private relay load runbook
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 This procedure measures unique private-transaction admission and relay across
 three independent hosts. It is the physical procedure for Stage 7 Gate 6. The
 short loopback test is a build check and does not satisfy the gate.

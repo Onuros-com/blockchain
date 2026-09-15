@@ -1,3 +1,7 @@
+evidence_status=superseded-historical
+active_privacy_protocol_qualified=false
+superseded_by=onuros-shielded-payment-v1-groth16-poseidon
+
 Onuros Stage 7 real Orchard duration gate
 Captured: Sat Sep 12 09:28:06 UTC 2026
 Source commit: 1091e91a4e5097ebafd8e80099eb090945c06699

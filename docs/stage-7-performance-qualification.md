@@ -1,5 +1,8 @@
 # Stage 7 performance qualification
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 ## Measurement rules
 
 Stage 7 reports three different rates. They are not interchangeable.

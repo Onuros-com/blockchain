@@ -22,7 +22,9 @@ case "$mode" in
     }
     shift
     expected_set=""
+    expected_candidate=""
     roles=""
+    nodes=""
     for manifest in "$@"; do
       require_file "$manifest"
       role="$(field "$manifest" role)"
@@ -43,6 +45,24 @@ case "$mode" in
       divergent="$(field "$manifest" divergent_transactions)"
       overflow="$(field "$manifest" limits_exceeded)"
       backend="$(field "$manifest" verification_backend)"
+      proof_system="$(field "$manifest" proof_system)"
+      commitment_hash="$(field "$manifest" commitment_hash)"
+      payment_bytes="$(field "$manifest" payment_bytes)"
+      profile="$(field "$manifest" qualification_profile)"
+      active_protocol="$(field "$manifest" active_privacy_protocol_qualified)"
+      genesis_sync="$(field "$manifest" genesis_sync_qualified)"
+      node_id="$(field "$manifest" node_id)"
+      loopback="$(field "$manifest" loopback)"
+      authenticated="$(field "$manifest" transport_authenticated)"
+      network_id="$(field "$manifest" network_id)"
+      circuit_version="$(field "$manifest" circuit_version)"
+      root_height="$(field "$manifest" root_height)"
+      genesis="$(field "$manifest" genesis)"
+      candidate_root="$(field "$manifest" candidate_root)"
+      parameters="$(field "$manifest" parameters_sha256)"
+      tls_ca="$(field "$manifest" tls_ca_sha256)"
+      blockchain_commit="$(field "$manifest" blockchain_commit)"
+      privacy_lab_commit="$(field "$manifest" privacy_lab_commit)"
       exit_status="$(field "$manifest" process_exit_status)"
       payloads="$(field "$manifest" private_payloads_logged)"
       set_hash="$(field "$manifest" id_set_sha256)"
@@ -73,7 +93,22 @@ case "$mode" in
          "$verification_seconds" =~ ^[0-9]+([.][0-9]+)?$ &&
          "$admitted_tps" =~ ^[0-9]+([.][0-9]+)?$ &&
          "$divergent" == "0" && "$overflow" == "0" &&
-         "$backend" == "orchard-ffi" && "$exit_status" == "0" &&
+         "$backend" == "onuros-privacy-engine-abi-v1" &&
+         "$proof_system" == "groth16-bls12-381" &&
+         "$commitment_hash" == "poseidon" && "$payment_bytes" == "584" &&
+         "$profile" == "groth16-poseidon-payment-relay-v1" &&
+         "$active_protocol" == "true" && "$genesis_sync" == "false" &&
+         "$loopback" == "false" && "$authenticated" == "true" &&
+         "$network_id" =~ ^[1-9][0-9]*$ &&
+         "$circuit_version" =~ ^[1-9][0-9]*$ &&
+         "$root_height" =~ ^[1-9][0-9]*$ &&
+         "$genesis" =~ ^[0-9a-f]{64}$ &&
+         "$candidate_root" =~ ^[0-9a-f]{64}$ &&
+         "$parameters" =~ ^[0-9a-f]{64}$ &&
+         "$tls_ca" =~ ^[0-9a-f]{64}$ &&
+         "$blockchain_commit" =~ ^[0-9a-f]{40}$ &&
+         "$privacy_lab_commit" =~ ^[0-9a-f]{40}$ &&
+         "$exit_status" == "0" &&
          "$payloads" == "false" && "$set_hash" =~ ^[0-9a-f]{64}$ ]] || {
         echo "relay invariant failed: $manifest" >&2
         exit 1
@@ -83,9 +118,21 @@ case "$mode" in
         exit 1
       }
       roles="$roles $role"
+      [[ " $nodes " != *" $node_id "* ]] || {
+        echo "relay node repeated: $node_id" >&2
+        exit 1
+      }
+      nodes="$nodes $node_id"
       if [[ -z "$expected_set" ]]; then expected_set="$set_hash";
       elif [[ "$set_hash" != "$expected_set" ]]; then
         echo "relay transaction sets diverged" >&2
+        exit 1
+      fi
+      candidate_identity="$network_id:$circuit_version:$root_height:$genesis:$candidate_root:$parameters:$tls_ca:$blockchain_commit:$privacy_lab_commit"
+      if [[ -z "$expected_candidate" ]]; then
+        expected_candidate="$candidate_identity"
+      elif [[ "$candidate_identity" != "$expected_candidate" ]]; then
+        echo "relay candidate identities diverged" >&2
         exit 1
       fi
     done
@@ -97,14 +144,15 @@ case "$mode" in
     printf 'stage7_unique_relay_gate=PASS nodes=3 minimum_tps=100 minimum_seconds=600 id_set_sha256=%s\n' "$expected_set"
     ;;
   block)
-    [[ "$#" -eq 3 ]] || {
-      echo "usage: $0 block RECEIVER_A RECEIVER_B" >&2
+    [[ "$#" -eq 5 ]] || {
+      echo "usage: $0 block RECEIVER_A RECEIVER_B RESTART_A RESTART_B" >&2
       exit 2
     }
     shift
     expected_id=""
+    expected_identity=""
     receivers=""
-    for manifest in "$@"; do
+    for manifest in "${@:1:2}"; do
       require_file "$manifest"
       role="$(field "$manifest" role)"
       receiver="$(field "$manifest" receiver_id)"
@@ -121,7 +169,29 @@ case "$mode" in
       validation="$(field "$manifest" validation)"
       durable="$(field "$manifest" durable_activation)"
       restart="$(field "$manifest" restart_recovery)"
+      late="$(field "$manifest" late_catch_up)"
+      offline="$(field "$manifest" offline_restart)"
       backend="$(field "$manifest" verification_backend)"
+      witness="$(field "$manifest" tracked_witness_backend)"
+      payment_bytes="$(field "$manifest" payment_bytes)"
+      proof_system="$(field "$manifest" proof_system)"
+      commitment_hash="$(field "$manifest" commitment_hash)"
+      profile="$(field "$manifest" qualification_profile)"
+      active="$(field "$manifest" active_privacy_protocol_qualified)"
+      genesis_sync="$(field "$manifest" genesis_sync_qualified)"
+      loopback="$(field "$manifest" loopback)"
+      authenticated="$(field "$manifest" transport_authenticated)"
+      genesis="$(field "$manifest" genesis)"
+      candidate_root="$(field "$manifest" candidate_root)"
+      terminal_root="$(field "$manifest" terminal_note_root)"
+      parameters="$(field "$manifest" parameters_sha256)"
+      corpus="$(field "$manifest" corpus_sha256)"
+      ca="$(field "$manifest" tls_ca_sha256)"
+      blockchain="$(field "$manifest" blockchain_commit)"
+      privacy_lab="$(field "$manifest" privacy_lab_commit)"
+      network="$(field "$manifest" network_id)"
+      circuit="$(field "$manifest" circuit_version)"
+      root_height="$(field "$manifest" root_height)"
       exit_status="$(field "$manifest" process_exit_status)"
       payloads="$(field "$manifest" private_payloads_logged)"
       awk -v b="$bytes" -v e="$elapsed" -v t="$transactions" \
@@ -129,15 +199,32 @@ case "$mode" in
           -v a="$announcement" -v q="$request" -v r="$response" '
         BEGIN {
           limit=16777216;
-          exit(b >= int(limit * 0.99) && b <= limit && e <= 30.0 &&
-               t >= 1800 && o > 0 && o < 100 && ot > 0 &&
+          exit(b > 3504000 && b <= limit && e <= 30.0 &&
+               t == 6001 && o > 0 && o < 100 && ot > 0 &&
                a > 0 && q > 0 && r > 0 ? 0 : 1)
         }
       ' || { echo "block size/latency gate failed: $manifest" >&2; exit 1; }
       [[ "$role" == "receiver" && -n "$receiver" &&
          "$block_id" =~ ^[0-9a-f]{64}$ && "$limits" == "0" &&
          "$validation" == "PASS" && "$durable" == "PASS" &&
-         "$restart" == "PASS" && "$backend" == "orchard-ffi" &&
+         "$late" == "PASS" && "$restart" == "PASS" &&
+         "$offline" == "PENDING_SEPARATE_PROCESS" &&
+         "$payment_bytes" == "584" &&
+         "$proof_system" == "groth16-bls12-381" &&
+         "$commitment_hash" == "poseidon" &&
+         "$profile" == "groth16-poseidon-genesis-sync-v1" &&
+         "$active" == "true" && "$genesis_sync" == "true" &&
+         "$loopback" == "false" && "$authenticated" == "true" &&
+         "$backend" == "onuros-privacy-engine-abi-v1" &&
+         "$witness" == "onuros-privacy-engine-abi-v2" &&
+         "$genesis" =~ ^[0-9a-f]{64}$ &&
+         "$candidate_root" =~ ^[0-9a-f]{64}$ &&
+         "$terminal_root" =~ ^[0-9a-f]{64}$ &&
+         "$parameters" =~ ^[0-9a-f]{64}$ &&
+         "$corpus" =~ ^[0-9a-f]{64}$ &&
+         "$ca" =~ ^[0-9a-f]{64}$ &&
+         "$blockchain" =~ ^[0-9a-f]{40}$ &&
+         "$privacy_lab" =~ ^[0-9a-f]{40}$ &&
          "$exit_status" == "0" && "$payloads" == "false" ]] || {
         echo "block invariant failed: $manifest" >&2
         exit 1
@@ -152,11 +239,51 @@ case "$mode" in
         echo "receiver block IDs diverged" >&2
         exit 1
       fi
+      identity="$genesis:$candidate_root:$terminal_root:$parameters:$corpus:$ca:$blockchain:$privacy_lab:$network:$circuit:$root_height"
+      if [[ -z "$expected_identity" ]]; then expected_identity="$identity";
+      elif [[ "$identity" != "$expected_identity" ]]; then
+        echo "receiver candidate/genesis identities diverged" >&2
+        exit 1
+      fi
     done
-    printf 'stage7_block_propagation_gate=PASS receivers=2 maximum_seconds=30 block_id=%s\n' "$expected_id"
+    restarts=""
+    for manifest in "${@:3:2}"; do
+      require_file "$manifest"
+      role="$(field "$manifest" role)"
+      node="$(field "$manifest" node_id)"
+      offline="$(field "$manifest" offline_restart)"
+      network_attempted="$(field "$manifest" network_attempted)"
+      restart_tip="$(field "$manifest" tip)"
+      exit_status="$(field "$manifest" process_exit_status)"
+      genesis="$(field "$manifest" genesis)"
+      candidate_root="$(field "$manifest" candidate_root)"
+      terminal_root="$(field "$manifest" terminal_note_root)"
+      parameters="$(field "$manifest" parameters_sha256)"
+      corpus="$(field "$manifest" corpus_sha256)"
+      ca="$(field "$manifest" tls_ca_sha256)"
+      blockchain="$(field "$manifest" blockchain_commit)"
+      privacy_lab="$(field "$manifest" privacy_lab_commit)"
+      network="$(field "$manifest" network_id)"
+      circuit="$(field "$manifest" circuit_version)"
+      root_height="$(field "$manifest" root_height)"
+      identity="$genesis:$candidate_root:$terminal_root:$parameters:$corpus:$ca:$blockchain:$privacy_lab:$network:$circuit:$root_height"
+      [[ "$role" == "restart" && -n "$node" &&
+         "$offline" == "PASS" && "$network_attempted" == "false" &&
+         "$restart_tip" == "$expected_id" && "$exit_status" == "0" &&
+         "$identity" == "$expected_identity" ]] || {
+        echo "offline restart invariant failed: $manifest" >&2
+        exit 1
+      }
+      [[ " $restarts " != *" $node "* ]] || {
+        echo "offline restart node repeated: $node" >&2
+        exit 1
+      }
+      restarts="$restarts $node"
+    done
+    printf 'stage7_candidate_sync_gate=PASS receivers=2 offline_restarts=2 maximum_seconds=30 block_id=%s\n' "$expected_id"
     ;;
   *)
-    echo "usage: $0 relay NODE_A NODE_B NODE_C | block RECEIVER_A RECEIVER_B" >&2
+    echo "usage: $0 relay NODE_A NODE_B NODE_C | block RECEIVER_A RECEIVER_B RESTART_A RESTART_B" >&2
     exit 2
     ;;
 esac

@@ -1,7 +1,7 @@
 # Onuros Privacy Engine migration qualification
 
-Status: integration in progress; consensus activation and production claims
-remain disabled.
+Status: active testnet migration in progress; mainnet activation and production
+claims remain disabled.
 
 ## Pinned interface boundary
 
@@ -11,8 +11,9 @@ remain disabled.
 - The ABI v2 snapshot binding contains network, circuit, block height, block
   hash and note root. The binding must come from an authenticated header-chain
   view; a snapshot checksum is not chain authority.
-- Legacy Orchard support remains isolated until replacement parity, physical
-  qualification and review are complete.
+- Orchard/Halo2 is removed from active build, workflow, default, admission and
+  qualification paths. Its source and evidence remain an explicitly
+  superseded historical reference.
 
 The tracked-witness tree is wallet/recovery state. It does not replace the
 consensus nullifier set, note-root commitment, block admission or durable
@@ -25,6 +26,8 @@ node-state journal.
 2. Admit genuine 584-byte payments through the normal mempool and block paths;
    reject malformed encodings, invalid proofs, stale/unknown roots, duplicate
    nullifiers and mismatched effects without partial state changes.
+   The mempool permits the candidate's exact one-nullifier/two-commitment
+   effect shape and bounds both sets independently.
 3. Bind tracked-witness exports to the authenticated chain view, enforce import
    allocation limits, and prove checkpoint/rollback and corrupt/cross-chain
    snapshot rejection.

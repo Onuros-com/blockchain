@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "archived Orchard/Halo2 pipeline: disabled on the active migration branch" >&2
+exit 64
+
 if (( $# != 2 )); then
   echo "usage: $0 PRIVATE_VERIFY_BENCHMARK PIPELINE_TEST" >&2
   exit 2

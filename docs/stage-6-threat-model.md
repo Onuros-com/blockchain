@@ -1,5 +1,8 @@
 # Stage 6 private-transaction threat model
 
+> Historical Orchard/Halo2 threat model; it does not describe the active
+> Groth16/Poseidon candidate. `active_privacy_protocol_qualified=false`.
+
 Status: completion checkpoint for pre-mainnet development
 
 ## Protected assets and trust boundaries

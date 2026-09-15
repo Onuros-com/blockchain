@@ -1,5 +1,8 @@
 # Stage 6 completion report
 
+> Evidence status: superseded historical Orchard/Halo2 checkpoint.
+> `active_privacy_protocol_qualified=false`. Raw results are retained unchanged.
+
 Status: complete development milestone
 
 Stage 6 integrates mandatory private transaction admission into the Onuros
@@ -80,4 +83,3 @@ are not a replacement for coverage-guided fuzzing or an external audit.
 - Stage 5 and Stage 6 database formats are intentionally incompatible.
 - Stage 4 AMD mining evidence remains deferred.
 - Passing tests does not mean the implementation is audited or safe for funds.
-

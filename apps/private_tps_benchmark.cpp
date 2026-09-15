@@ -64,6 +64,6 @@ int main(int argc, char** argv) {
               << "Transactions: " << selected.size() << '\n'
               << "Seconds: " << elapsed << '\n'
               << "Admission TPS: " << selected.size() / elapsed << '\n'
-              << "Proof mode: scripted effects; this is not Orchard private TPS\n";
+              << "Proof mode: scripted effects; this is not Privacy Engine private TPS\n";
     return selected.size() == count ? 0 : 1;
 }

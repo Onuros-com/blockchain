@@ -22,21 +22,26 @@ difficulty adjustment, median-time rules, a checksummed append-only database
 with torn-write recovery, strongest-chain selection, atomic reorganization
 state, and an integrated local validation/mining/restart pipeline.
 
-Stage 6 adds the mandatory private-transaction body, pinned Orchard verification
-boundary, shielded state commitment and persistence, private reward binding,
-bounded mempool, and a real Orchard end-to-end node pipeline. On a published
-Ryzen 5 3600 / WSL2 baseline, four verification workers sustained an average of
-153.140 real Orchard verifications per second across three 4,000-transaction
-runs. This is cryptographic verification throughput—not yet multi-node network
-TPS or end-user confirmation throughput.
+The active private-payment candidate is Onuros Shielded Payment v1: a fixed
+584-byte, one-input/two-output payment using Groth16/BLS12-381 and Poseidon,
+accessed through Privacy Engine payment ABI v1 and tracked-witness ABI v2.
+Orchard/Halo2 is no longer built, run, or selected by default. Its Stage 6 and
+Stage 7 measurements remain in place as explicitly superseded historical
+evidence and do not qualify the active protocol.
+
+This remains a pre-mainnet candidate. Physical three-host qualification,
+independent circuit review, a frozen parameter identity, and a public
+multi-party Groth16 setup remain release gates.
 
 Run `make test` or use CMake/CTest. Build the runnable local node with `make node`,
 then follow [the WSL local-node guide](docs/local-node-run.md). Linux, Windows and
 sanitizer builds run in GitHub Actions.
 
-Read the [Stage 6 completion report](docs/stage-6-completion-report.md),
-[Stage 6 threat model](docs/stage-6-threat-model.md), and
-[Stage 7 networking specification](docs/stage-7-networking-spec.md). Stage 4's
+Read the [active migration contract](docs/onuros-privacy-engine-migration.md),
+[Groth16 decision rationale](docs/decisions/why-groth16-not-orchard.md), and
+[multi-PC qualification runbook](docs/onuros-private-testnet-runbook.md).
+The Stage 6 completion report, Stage 6 threat model and earlier Stage 7
+networking specification are retained historical Orchard/Halo2 records. Stage 4's
 hardware and GPU-to-node qualification evidence is tracked separately in the
 [validation record](docs/stage-4-deferred-validation.md). That completed
 prototype gate does not by itself make the public mining transport or desktop

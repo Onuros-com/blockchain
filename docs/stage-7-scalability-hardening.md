@@ -1,5 +1,8 @@
 # Stage 7 scalability and storage hardening
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 This work is an extension of Stage 7, not a replacement for the original
 single Layer-1 roadmap. The 100 sustained private TPS objective remains. Relay,
 verification and settlement rates must be measured separately, and no rate is

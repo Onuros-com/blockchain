@@ -1,5 +1,8 @@
 # Stage 7 near-limit block propagation runbook
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 This procedure closes Stage 7 Gate 7. It transfers the same block from one
 sender to two independent receivers. Each receiver reconstructs the compact
 block with a measured mempool overlap, verifies every Orchard proof, activates

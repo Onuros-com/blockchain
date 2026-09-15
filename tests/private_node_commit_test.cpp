@@ -65,7 +65,7 @@ LocalNodeParameters parameters() {
     const auto pow_limit = decode_compact_target(0x207fffffU);
     check(pow_limit.has_value(), "test proof-of-work limit decodes");
     LocalNodeParameters result;
-    result.validation_limits = {2U, 2U, 4096U, 8U, 1024U};
+    result.validation_limits = {2U, 3U, 4096U, 8U, 1024U};
     result.decode_limits = {4096U, 8U, 1024U};
     result.difficulty.target_block_seconds = 60U;
     result.difficulty.retarget_interval = 60U;
@@ -84,7 +84,7 @@ void solve(Block& block, const Target256& pow_limit) {
 
 Block add_genesis(LocalNode& node, const Target256& pow_limit,
                   const Hash256& initial_root) {
-    auto candidate = node.make_candidate({{2U, {1U}}}, 100U);
+    auto candidate = node.make_candidate({{3U, {1U}}}, 100U);
     check(candidate.has_value(), "genesis candidate created");
     candidate->header.shielded_root = initial_root;
     solve(*candidate, pow_limit);
@@ -99,7 +99,7 @@ Block private_candidate(LocalNode& node, const ShieldedState& state,
         const Hash256& ecosystem, std::uint8_t byte,
         std::uint64_t timestamp, const Target256& pow_limit) {
     const TransactionEnvelope private_transaction{
-        private_transaction_envelope_version, {byte}};
+        3U, {byte}};
     const auto admission = PrivateBlockAdmission::prepare(
         state, state.tip(), {private_transaction}, verifier,
         {1024U, 4U, 4U, 8U});
@@ -130,7 +130,7 @@ Block branch_candidate(const Block& parent, const ShieldedState& state,
         const Hash256& ecosystem, std::uint8_t byte,
         std::uint64_t timestamp, const Target256& pow_limit) {
     const TransactionEnvelope private_transaction{
-        private_transaction_envelope_version, {byte}};
+        3U, {byte}};
     const auto admission = PrivateBlockAdmission::prepare(
         state, state.tip(), {private_transaction}, verifier,
         {1024U, 4U, 4U, 8U});

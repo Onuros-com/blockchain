@@ -1,4 +1,5 @@
 #include "onuros/onuros_privacy_engine_backend.hpp"
+#include "onuros/privacy_engine_network.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -53,6 +54,22 @@ int main() {
 
     Hash256 genesis{};
     genesis[0] = 1U;
+    ShieldedState network_state(genesis, accepted.anchor);
+    PrivacyEngineNetworkAdmission network(
+        engine, &validate, {root}, 120U, 100U, network_state,
+        {16U, 64U * 1024U, 64U, 1024U, 4U},
+        16U, 64U * 1024U, {}, {64U * 1024U, 16U, 1024U});
+    const P2pFrame payment_frame{
+        stage7_protocol_version, P2pMessageType::transactions, 1U,
+        encode_network_transactions({payment})};
+    const auto network_result = network.handle_frame_parallel(payment_frame, 2U);
+    check(network_result.has_value() && network_result->accepted());
+    check(network.mempool().size() == 1U);
+    check(network.mempool().total_actions() == 2U);
+    const auto duplicate_network = network.handle_frame(payment_frame.request_id,
+                                                        payment_frame);
+    check(duplicate_network.has_value() && !duplicate_network->accepted());
+
     ShieldedState state(genesis, accepted.anchor);
     const PrivateAdmissionLimits limits{
         onuros_private_payment_bytes, 1U, 2U, 16U};

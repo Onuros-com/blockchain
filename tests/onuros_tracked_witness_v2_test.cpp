@@ -81,7 +81,7 @@ onuros_privacy_status_v1 root(
         std::uint8_t* output) {
     if (tree == nullptr || output == nullptr)
         return ONUROS_PRIVACY_NULL_ARGUMENT;
-    std::fill_n(output, 32U, 0U);
+    std::fill_n(output, 32U, static_cast<std::uint8_t>(0U));
     output[0] = static_cast<std::uint8_t>(tree->leaves.size());
     for (const auto& leaf : tree->leaves) output[1] ^= leaf[0];
     return ONUROS_PRIVACY_OK;

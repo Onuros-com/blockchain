@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 3 )); then
-  echo "usage: $0 NODE CORPUS_GENERATOR OUTPUT" >&2
+if (( $# != 2 )); then
+  echo "usage: $0 NODE OUTPUT" >&2
   exit 2
 fi
 
 node="$1"
-generator="$2"
-output="$3"
+output="$2"
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+corpus_dir="${ONUROS_CORPUS_DIR:?set ONUROS_CORPUS_DIR}"
+parameters_sha256="${ONUROS_EXPECTED_PARAMS_SHA256:?set ONUROS_EXPECTED_PARAMS_SHA256}"
+candidate_root="${ONUROS_CANDIDATE_ROOT:?set ONUROS_CANDIDATE_ROOT}"
+network_id="${ONUROS_NETWORK_ID:?set ONUROS_NETWORK_ID}"
+circuit_version="${ONUROS_CIRCUIT_VERSION:?set ONUROS_CIRCUIT_VERSION}"
+root_height="${ONUROS_ROOT_HEIGHT:?set ONUROS_ROOT_HEIGHT}"
+blockchain_commit="${ONUROS_BLOCKCHAIN_COMMIT:?set ONUROS_BLOCKCHAIN_COMMIT}"
+privacy_lab_commit="${ONUROS_PRIVACY_LAB_COMMIT:?set ONUROS_PRIVACY_LAB_COMMIT}"
 port="${ONUROS_STAGE7_LOAD_TEST_PORT:-$((41000 + RANDOM % 8000))}"
 work="$(mktemp -d)"
 relay_pid=""
@@ -28,17 +35,17 @@ mkdir -p "$output"
 
 bash "$repo_dir/scripts/generate-stage7-tls-material.sh" \
   "$work/tls" load-relay load-client >/dev/null
-"$generator" --generate-corpus-shards "$work/corpus.onc" 4 2 0 1 \
-  >"$output/generator.log" 2>&1
-"$generator" --generate-corpus-shards "$work/corpus.onc" 4 2 0 1 \
-  >>"$output/generator.log" 2>&1
-grep -q '^corpus_shard=REUSED shard=0 ' "$output/generator.log"
-"$generator" --generate-corpus-shards "$work/corpus.onc" 4 2 1 2 \
-  >>"$output/generator.log" 2>&1
-"$generator" --merge-corpus-shards "$work/corpus.onc" 4 2 \
-  >>"$output/generator.log" 2>&1
-grep -q '^orchard_corpus=PASS transactions=4 shards=2 unique=4 ' \
-  "$output/generator.log"
+[[ -f "$corpus_dir/payments.bin" && -f "$corpus_dir/params.bin" ]] || {
+  echo "candidate corpus or parameters missing" >&2
+  exit 1
+}
+
+common=(--parameters "$corpus_dir/params.bin"
+  --parameters-sha256 "$parameters_sha256"
+  --network-id "$network_id" --circuit-version "$circuit_version"
+  --root-height "$root_height" --root "$candidate_root"
+  --blockchain-commit "$blockchain_commit"
+  --privacy-lab-commit "$privacy_lab_commit")
 
 wait_for_log() {
   local pattern="$1" log="$2" pid="$3"
@@ -55,6 +62,7 @@ wait_for_log() {
   --cert "$work/tls/server.crt" --key "$work/tls/server.key" \
   --ca "$work/tls/ca.crt" --expected-origin load-client \
   --expected-observer load-client --workers 2 \
+  --node-id loopback-relay "${common[@]}" \
   --manifest "$output/relay.manifest" >"$output/relay.log" 2>&1 &
 relay_pid=$!
 wait_for_log '^READY role=relay ' "$output/relay.log" "$relay_pid"
@@ -62,7 +70,8 @@ wait_for_log '^READY role=relay ' "$output/relay.log" "$relay_pid"
 "$node" --role origin --address 127.0.0.1 --port "$port" \
   --cert "$work/tls/client.crt" --key "$work/tls/client.key" \
   --ca "$work/tls/ca.crt" --expected-relay load-relay \
-  --corpus "$work/corpus.onc" --duration 1 --rate 4 --batch 2 --workers 2 \
+  --corpus "$corpus_dir/payments.bin" --duration 1 --rate 4 --batch 2 --workers 2 \
+  --node-id loopback-origin "${common[@]}" \
   --manifest "$output/origin.manifest" >"$output/origin.log" 2>&1 &
 origin_pid=$!
 wait_for_log '^CONNECTED peer=origin$' "$output/relay.log" "$relay_pid"
@@ -70,6 +79,7 @@ wait_for_log '^CONNECTED peer=origin$' "$output/relay.log" "$relay_pid"
 "$node" --role observer --address 127.0.0.1 --port "$port" \
   --cert "$work/tls/client.crt" --key "$work/tls/client.key" \
   --ca "$work/tls/ca.crt" --expected-relay load-relay --workers 2 \
+  --node-id loopback-observer "${common[@]}" \
   --manifest "$output/observer.manifest" >"$output/observer.log" 2>&1 &
 observer_pid=$!
 
@@ -85,5 +95,5 @@ relay_hash="$(awk -F= '$1=="id_set_sha256" {print $2}' "$output/relay.manifest")
 observer_hash="$(awk -F= '$1=="id_set_sha256" {print $2}' "$output/observer.manifest")"
 [[ -n "$origin_hash" && "$origin_hash" == "$relay_hash" &&
    "$origin_hash" == "$observer_hash" ]]
-printf 'stage7_private_load_loopback=PASS transactions=4 id_set_sha256=%s\n' \
+printf 'stage7_private_load_loopback=PASS qualification=false transactions=4 id_set_sha256=%s\n' \
   "$origin_hash"

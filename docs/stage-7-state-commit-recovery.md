@@ -1,5 +1,8 @@
 # Stage 7 private-state commit recovery
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 ## Scope
 
 `PrivateNodeCommitCoordinator` coordinates an active-chain block append with the corresponding shielded-state transition. It handles direct tip extensions and stronger-branch reorganizations. It prevents a restart from exposing a durable active block tip whose Orchard nullifier and commitment state was not persisted.

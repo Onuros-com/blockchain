@@ -37,7 +37,7 @@ public:
 Block candidate(const ShieldedState& state, Height height,
                 const PrivateRewardPolicy& policy, const Verifier& verifier,
                 const TestRoot& roots, Hash256 team, Hash256 ecosystem) {
-    const TransactionEnvelope private_tx{private_transaction_envelope_version, {2U}};
+    const TransactionEnvelope private_tx{3U, {2U}};
     const auto admission = PrivateBlockAdmission::prepare(
         state, state.tip(), {private_tx}, verifier, {1024U, 4U, 4U, 8U});
     check(admission.accepted());

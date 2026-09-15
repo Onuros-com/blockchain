@@ -1,5 +1,8 @@
 # Stage 7 effect and authorization commitments
 
+> Historical Orchard/Halo2 document. Superseded for active protocol use;
+> `active_privacy_protocol_qualified=false`. Retained for traceability.
+
 This scalability checkpoint defines a research-only version-1 commitment split
 for the existing canonical `ONP2` private transaction. It does not activate a
 new transaction format, change Orchard verification, or alter the 16 MiB block

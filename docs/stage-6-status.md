@@ -1,5 +1,8 @@
 # Stage 6 status: private transaction admission
 
+> Evidence status: superseded historical Orchard/Halo2 checkpoint.
+> `active_privacy_protocol_qualified=false`. Raw results are retained unchanged.
+
 Stage 6 implementation and validation are complete on the
 `private-transactions` branch. This closes the Stage 6 development milestone;
 it is not a claim that the wider node or network is ready for mainnet.

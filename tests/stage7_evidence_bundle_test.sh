@@ -49,7 +49,26 @@ verification_seconds=550.000000
 admitted_tps=110.000000
 divergent_transactions=0
 limits_exceeded=0
-verification_backend=orchard-ffi
+payment_bytes=584
+proof_system=groth16-bls12-381
+commitment_hash=poseidon
+verification_backend=onuros-privacy-engine-abi-v1
+tracked_witness_backend=onuros-privacy-engine-abi-v2
+qualification_profile=groth16-poseidon-payment-relay-v1
+active_privacy_protocol_qualified=true
+genesis_sync_qualified=false
+network_id=1
+circuit_version=1
+root_height=100
+genesis=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+candidate_root=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+parameters_sha256=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+tls_ca_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+blockchain_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+privacy_lab_commit=2222222222222222222222222222222222222222
+node_id=$role
+loopback=false
+transport_authenticated=true
 process_exit_status=0
 private_payloads_logged=false
 id_set_sha256=$set_hash
@@ -90,10 +109,11 @@ for receiver in rtx3060 rtx4070; do
   cat >"$directory/node-manifest.txt" <<EOF
 role=receiver
 receiver_id=$receiver
-block_bytes=16612467
-transactions=1811
+node_id=$receiver
+block_bytes=3552300
+transactions=6001
 mempool_overlap_percent=50
-mempool_overlap_transactions=905
+mempool_overlap_transactions=3000
 announcement_bytes=58168
 request_bytes=3728
 response_bytes=8300000
@@ -102,8 +122,30 @@ block_id=$block_id
 limits_exceeded=0
 validation=PASS
 durable_activation=PASS
+late_catch_up=PASS
 restart_recovery=PASS
-verification_backend=orchard-ffi
+offline_restart=PENDING_SEPARATE_PROCESS
+payment_bytes=584
+proof_system=groth16-bls12-381
+commitment_hash=poseidon
+verification_backend=onuros-privacy-engine-abi-v1
+tracked_witness_backend=onuros-privacy-engine-abi-v2
+qualification_profile=groth16-poseidon-genesis-sync-v1
+active_privacy_protocol_qualified=true
+genesis_sync_qualified=true
+loopback=false
+transport_authenticated=true
+genesis=1111111111111111111111111111111111111111111111111111111111111111
+candidate_root=2222222222222222222222222222222222222222222222222222222222222222
+terminal_note_root=3333333333333333333333333333333333333333333333333333333333333333
+parameters_sha256=4444444444444444444444444444444444444444444444444444444444444444
+corpus_sha256=5555555555555555555555555555555555555555555555555555555555555555
+tls_ca_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+blockchain_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+privacy_lab_commit=2222222222222222222222222222222222222222
+network_id=1
+circuit_version=1
+root_height=100
 process_exit_status=0
 private_payloads_logged=false
 EOF
@@ -112,11 +154,40 @@ EOF
   write_host_manifest "$directory" 'stage7_block_evidence=PASS'
 done
 
-bash "$bundle_validator" block "$work/rtx3060" "$work/rtx4070" |
+for receiver in rtx3060 rtx4070; do
+  directory="$work/$receiver-restart"
+  mkdir -p "$directory"
+  cat >"$directory/node-manifest.txt" <<EOF
+role=restart
+node_id=$receiver
+offline_restart=PASS
+network_attempted=false
+process_exit_status=0
+tip=$block_id
+genesis=1111111111111111111111111111111111111111111111111111111111111111
+candidate_root=2222222222222222222222222222222222222222222222222222222222222222
+terminal_note_root=3333333333333333333333333333333333333333333333333333333333333333
+parameters_sha256=4444444444444444444444444444444444444444444444444444444444444444
+corpus_sha256=5555555555555555555555555555555555555555555555555555555555555555
+tls_ca_sha256=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+blockchain_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+privacy_lab_commit=2222222222222222222222222222222222222222
+network_id=1
+circuit_version=1
+root_height=100
+EOF
+  printf 'stage7_offline_restart=PASS node_id=%s\n' "$receiver" \
+    >"$directory/node.log"
+  write_host_manifest "$directory" 'stage7_restart_evidence=PASS'
+done
+
+bash "$bundle_validator" block "$work/rtx3060" "$work/rtx4070" \
+  "$work/rtx3060-restart" "$work/rtx4070-restart" |
   grep -q '^stage7_evidence_bundle=PASS mode=block '
 
 printf '%s\n' '-----BEGIN PRIVATE KEY-----' >"$work/rtx4070/leaked.key"
 if bash "$bundle_validator" block "$work/rtx3060" "$work/rtx4070" \
+    "$work/rtx3060-restart" "$work/rtx4070-restart" \
     >/dev/null 2>&1; then
   echo "bundle validator accepted private-key material" >&2
   exit 1

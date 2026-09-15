@@ -79,11 +79,16 @@ check_bundle() {
       "$host_manifest" || fail "capture gate missing for $expected_role"
     grep -q "^stage7_private_load=PASS role=$expected_role " "$node_log" || \
       fail "node PASS record missing for $expected_role"
-  else
+  elif [[ "$expected_role" == "receiver" ]]; then
     grep -q '^stage7_block_evidence=PASS$' "$host_manifest" || \
       fail "block capture gate missing for $expected_role"
     grep -q '^stage7_block_receiver=PASS ' "$node_log" || \
       fail "block receiver PASS record missing for $expected_role"
+  else
+    grep -q '^stage7_restart_evidence=PASS$' "$host_manifest" || \
+      fail "restart capture gate missing"
+    grep -q '^stage7_offline_restart=PASS ' "$node_log" || \
+      fail "offline restart PASS record missing"
   fi
   printf '%s %s\n' "$commit" "$ca_hash"
 }
@@ -98,14 +103,14 @@ case "$mode" in
     roles=(origin relay observer)
     ;;
   block)
-    (( $# == 3 )) || {
-      echo "usage: $0 block RECEIVER_A_DIR RECEIVER_B_DIR" >&2
+    (( $# == 5 )) || {
+      echo "usage: $0 block RECEIVER_A_DIR RECEIVER_B_DIR RESTART_A_DIR RESTART_B_DIR" >&2
       exit 2
     }
-    roles=(receiver receiver)
+    roles=(receiver receiver restart restart)
     ;;
   *)
-    echo "usage: $0 relay ORIGIN_DIR RELAY_DIR OBSERVER_DIR | block RECEIVER_A_DIR RECEIVER_B_DIR" >&2
+    echo "usage: $0 relay ORIGIN_DIR RELAY_DIR OBSERVER_DIR | block RECEIVER_A_DIR RECEIVER_B_DIR RESTART_A_DIR RESTART_B_DIR" >&2
     exit 2
     ;;
 esac

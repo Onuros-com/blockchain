@@ -1,5 +1,10 @@
 # Stage 7 evidence index
 
+> This index contains superseded Orchard/Halo2 evidence. Those rows remain
+> historically valid only for their stated measurements and carry
+> `active_privacy_protocol_qualified=false`; active Groth16/Poseidon gates must
+> be rerun.
+
 This index records implemented controls, automated results, physical evidence,
 and open qualification work. It does not assign an audit disposition. Review
 findings and acceptance decisions are added after the reviewer supplies the
